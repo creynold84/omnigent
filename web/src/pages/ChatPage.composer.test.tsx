@@ -44,7 +44,7 @@ import type { ElicitationBlock } from "@/lib/blocks";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Composer, shouldQueueSend } from "./ChatPage";
 import type { QueuedMessage } from "@/store/chatStore";
-import { SlashCommandMenu } from "@/components/SlashCommandMenu";
+import { SlashCommandMenu, slashCommandMatches } from "@/components/SlashCommandMenu";
 
 // These tests pin the slash-command suggestions menu UX in the composer:
 // (1) the first match is highlighted as soon as the menu opens, so Tab/Enter
@@ -133,6 +133,20 @@ describe("Composer slash-command menu", () => {
 
     fireEvent.keyDown(ta, { key: "Tab" });
     // Skills fill "/name " and keep focus so the user can append args.
+    expect(ta.value).toBe("/deslop ");
+  });
+
+  it("Tab completes a match found only mid-name (exercises menuMatches, not just the render filter)", () => {
+    render(<Composer {...composerProps()} />);
+    const ta = textarea();
+    // "slop" is a substring of "deslop" but a prefix of no command. The menu
+    // render filter would show the row either way; Tab-completion reads
+    // menuMatches[menuIndex], so this only completes if the keyboard-nav
+    // filter is substring-based. Guards menuMatches from silently reverting
+    // to prefix matching and diverging from the rendered list.
+    fireEvent.change(ta, { target: { value: "/slop" } });
+    expect(activeRow()?.textContent).toContain("/deslop");
+    fireEvent.keyDown(ta, { key: "Tab" });
     expect(ta.value).toBe("/deslop ");
   });
 
@@ -842,6 +856,31 @@ describe("Composer Codex Plan-mode control", () => {
   });
 });
 
+describe("slashCommandMatches", () => {
+  it("matches the leaf segment after a namespace prefix", () => {
+    expect(slashCommandMatches("/superpowers:using-superpowers", "using-superpowers")).toBe(true);
+  });
+
+  it("matches a substring in the middle of the name", () => {
+    expect(slashCommandMatches("/cross-review", "rev")).toBe(true);
+  });
+
+  it("does not match a word that only appears in the description", () => {
+    // Matching is name-only — the web menu never shows descriptions inline,
+    // so a description-driven hit would look unexplained. "window" is in this
+    // command's blurb but not its name, so it must NOT match.
+    expect(slashCommandMatches("/context", "window")).toBe(false);
+  });
+
+  it("is case-insensitive on both name and query", () => {
+    expect(slashCommandMatches("/Superpowers:Using", "USING")).toBe(true);
+  });
+
+  it("returns false when the query is nowhere in the name", () => {
+    expect(slashCommandMatches("/context", "zzz")).toBe(false);
+  });
+});
+
 describe("SlashCommandMenu", () => {
   const COMMANDS = {
     "/alpha": "First",
@@ -906,6 +945,18 @@ describe("SlashCommandMenu", () => {
     expect(detail.textContent).toContain("/beta");
     expect(detail.textContent).toContain("Second");
     expect(detail.textContent).not.toContain("First");
+  });
+
+  it("surfaces a namespaced skill by its leaf name", () => {
+    render(
+      <SlashCommandMenu
+        query="using-superpowers"
+        activeIndex={0}
+        onSelect={vi.fn()}
+        commands={{ "/superpowers:using-superpowers": "Establishes how to find and use skills" }}
+      />,
+    );
+    expect(screen.getByTestId("slash-menu-item-superpowers:using-superpowers")).toBeDefined();
   });
 });
 

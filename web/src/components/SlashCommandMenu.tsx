@@ -39,6 +39,19 @@ export function isSlashCommandText(text: string): boolean {
   return SLASH_COMMAND_RE.test(text.trim());
 }
 
+/**
+ * True when `query` is a case-insensitive substring of the command name
+ * (sans the leading `/`). Matches on the name only — not the description —
+ * because the web menu never shows descriptions inline, so a
+ * description-driven match would look unexplained. Shared by the menu
+ * render filter here and the two composers' keyboard-nav filters (ChatPage
+ * `menuMatches`, NewChatDialog `slashMenuMatches`) so the visible list and
+ * the keyboard index can't drift apart.
+ */
+export function slashCommandMatches(name: string, query: string): boolean {
+  return name.slice(1).toLowerCase().includes(query.toLowerCase());
+}
+
 interface SlashCommandMenuProps {
   /** The text typed after the leading ``/``, used to filter suggestions. */
   query: string;
@@ -115,7 +128,8 @@ function MenuRowButton({
  * layout: a narrow panel with "Commands" / "Skills" section headers and
  * icon + name rows, plus a detail card beside the panel showing the
  * highlighted entry's full description (hidden on small screens).
- * Only commands whose name starts with the current query are shown.
+ * Only commands whose name (sans ``/``) contains the current query as a
+ * case-insensitive substring are shown.
  * Positioned via ``absolute bottom-full`` relative to the rounded
  * composer container. Exported for direct unit testing.
  */
@@ -125,8 +139,7 @@ export function SlashCommandMenu({
   onSelect,
   commands,
 }: SlashCommandMenuProps) {
-  const lower = query.toLowerCase();
-  const matches = Object.entries(commands).filter(([name]) => name.slice(1).startsWith(lower));
+  const matches = Object.entries(commands).filter(([name]) => slashCommandMatches(name, query));
   const listRef = useRef<HTMLDivElement>(null);
   // Keep the keyboard-highlighted row visible as the user arrows past the
   // visible window of this capped-height, scrollable list. Without this the

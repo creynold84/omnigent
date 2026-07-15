@@ -8301,11 +8301,18 @@ class _SlashCommandCompleter(Completer):
         if "/" in text_before[1:]:
             return
 
-        prefix = text_before.lower()
+        # Match the web UI's rule (slashCommandMatches in
+        # SlashCommandMenu.tsx): a case-insensitive substring of the
+        # command name (sans the leading "/"), so a namespaced skill is
+        # reachable by its leaf name (``/using-superpowers`` ->
+        # ``/superpowers:using-superpowers``). Name only, not the
+        # description — kept identical to the web menu, which never shows
+        # descriptions inline.
+        query = text_before[1:].lower()
         for name, (desc, _) in COMMANDS.items():
             if name in _SLASH_COMMAND_ALIASES:
                 continue
-            if not name.startswith(prefix):
+            if query not in name[1:].lower():
                 continue
             yield Completion(
                 text=name,
