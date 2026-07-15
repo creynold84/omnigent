@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { RenderItem } from "@/lib/renderItems";
 import type { ToolExecution } from "@/lib/blocks";
 import type { Bubble } from "@/lib/renderItems";
-import { BUILTIN_SLASH_COMMANDS, isSlashCommandText, slashCommandMatches } from "@/components/SlashCommandMenu";
+import {
+  BUILTIN_SLASH_COMMANDS,
+  isSlashCommandText,
+  slashCommandMatches,
+} from "@/components/SlashCommandMenu";
 import { isSessionSharedWithOthers } from "@/lib/permissionsApi";
 import {
   buildPendingBubbles,
@@ -1019,7 +1023,9 @@ describe("buildSlashCommandMap", () => {
       true,
     );
     // A namespaced skill is found by its leaf name — the exact bug this fixes.
-    const matches = Object.keys(map).filter((name) => slashCommandMatches(name, "using-superpowers"));
+    const matches = Object.keys(map).filter((name) =>
+      slashCommandMatches(name, "using-superpowers"),
+    );
     expect(matches).toEqual(["/superpowers:using-superpowers"]);
   });
 });
