@@ -2160,7 +2160,7 @@ def test_completer_plain_text_yields_nothing() -> None:
 
 def _noop_handler(*_args: object, **_kwargs: object) -> None:
     """Stand-in handler for synthetic COMMANDS entries in completer tests."""
-    return None
+    return
 
 
 _FAKE_COMMANDS = {
