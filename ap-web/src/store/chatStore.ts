@@ -370,10 +370,11 @@ export interface ChatState {
    */
   gitBranch: string | null;
   /**
-   * Current Claude Code todo list for `omnigent claude` sessions.
-   * Populated from the session snapshot on bind and updated by
-   * `session.todos` SSE events. Empty array for non-claude-native
-   * sessions or before the first poll tick from the forwarder.
+   * Current plan/TODO list for native sessions that feed the Tasks panel
+   * (claude-native TodoWrite/task hooks; codex-native `turn/plan/updated`
+   * plan steps). Populated from the session snapshot on bind and updated by
+   * `session.todos` SSE events. Empty array for unsupported sessions or
+   * before the forwarder posts the first update.
    */
   todos: Array<{
     content: string;

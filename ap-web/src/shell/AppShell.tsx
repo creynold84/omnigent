@@ -39,6 +39,7 @@ import {
 } from "@/hooks/useWorkspaceChangedFiles";
 import { cn } from "@/lib/utils";
 import { isNativeWrapper as isNativeWrapperLabel } from "@/lib/nativeCodingAgents";
+import { supportsTasksPanel as sessionSupportsTasksPanel } from "@/lib/sessionCapabilities";
 import { useChatStore } from "@/store/chatStore";
 import { livenessRowFromSession, useSessionLiveness } from "@/hooks/useSessionLiveness";
 import { useResizableInlinePanel } from "@/hooks/useResizableInlinePanel";
@@ -292,6 +293,9 @@ export function AppShell() {
   // (embedded Omnigent REPL terminal) have NO wrapper label and must
   // keep regular chat behavior. See TerminalFirstContext.tsx.
   const isNativeWrapper = isNativeWrapperLabel(sessionLabels["omnigent.wrapper"]);
+  // Gates the Tasks (plan/TODO) panel. Shares the native-wrapper allowlist with
+  // supportsEffortControl via sessionCapabilities.ts so the two stay in sync.
+  const supportsTasksPanel = sessionSupportsTasksPanel({ labels: sessionLabels });
   const todos = useChatStore((s) => s.todos);
   const todosCompleted = todos.filter((t) => t.status === "completed").length;
   // Used for the header "Back to parent" link, which is hidden on
@@ -431,14 +435,14 @@ export function AppShell() {
         // empty and ``agentSupportsShells`` starts false while the agent
         // loads, so native sessions don't flash the tab.
         terminals: !hideTerminalsTab && (railTerminals.length > 0 || agentSupportsShells),
-        todos: isClaudeNative && todos.length > 0,
+        todos: supportsTasksPanel && todos.length > 0,
       }) as const,
     [
       showFilesPanel,
       hideTerminalsTab,
       railTerminals.length,
       agentSupportsShells,
-      isClaudeNative,
+      supportsTasksPanel,
       todos.length,
     ],
   );
@@ -1059,7 +1063,7 @@ export function AppShell() {
                     todosPanelOpen,
                     hideTerminalsTab,
                     terminalsLength: railTerminals.length,
-                    isClaudeNative,
+                    supportsTasksPanel,
                     todosCompleted,
                     todosTotal: todos.length,
                     debugMode,
@@ -1106,7 +1110,7 @@ export function AppShell() {
                       terminalsLength={railTerminals.length}
                       subagentsWorking={subagentsWorking}
                       agentCount={agentCount}
-                      isClaudeNative={isClaudeNative}
+                      supportsTasksPanel={supportsTasksPanel}
                       todosCompleted={todosCompleted}
                       todosTotal={todos.length}
                       rootSessionId={rootSessionId}

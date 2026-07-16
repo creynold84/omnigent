@@ -667,3 +667,113 @@ async def test_elicitation_post_returns_none_when_budget_exhausted(
     # 1 = the deadline check stopped the loop before a second attempt
     # (backoff 1.0s > 0.5s budget); more means the budget is ignored.
     assert len(client.posts) == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("completed", "completed"),
+        ("inProgress", "in_progress"),
+        ("in_progress", "in_progress"),
+        ("pending", "pending"),
+        (None, "pending"),
+        ("something-else", "pending"),
+    ],
+)
+def test_normalize_plan_status(status: object, expected: str) -> None:
+    """Codex step statuses map onto the server's snake_case todo vocabulary.
+
+    ``inProgress`` (camelCase, Codex's wire form) must become ``in_progress``
+    or the server's todo filter silently drops the item; anything unknown
+    falls back to ``pending``.
+    """
+    assert fwd._normalize_plan_status(status) == expected
+
+
+def test_plan_todos_from_update_maps_steps() -> None:
+    """A structured plan maps to well-formed external_session_todos items.
+
+    ``step`` fills both ``content`` and ``activeForm`` (Codex has no gerund
+    form, matching the claude-native native-task fallback), and statuses are
+    normalized so every item survives the server/web todo filter.
+    """
+    params = {
+        "plan": [
+            {"step": "Read the code", "status": "completed"},
+            {"step": "Write the fix", "status": "inProgress"},
+            {"step": "Run tests", "status": "pending"},
+        ]
+    }
+
+    assert fwd._plan_todos_from_update(params) == [
+        {"content": "Read the code", "status": "completed", "activeForm": "Read the code"},
+        {"content": "Write the fix", "status": "in_progress", "activeForm": "Write the fix"},
+        {"content": "Run tests", "status": "pending", "activeForm": "Run tests"},
+    ]
+
+
+def test_plan_todos_from_update_skips_malformed_and_empty() -> None:
+    """Non-dict entries and blank/missing steps are dropped; empties → None."""
+    assert fwd._plan_todos_from_update({"plan": []}) is None
+    assert fwd._plan_todos_from_update({}) is None
+    assert fwd._plan_todos_from_update({"plan": "nope"}) is None
+    # Only the valid entry survives the filter.
+    plan = [
+        "bogus",
+        {"status": "pending"},
+        {"step": "", "status": "pending"},
+        {"step": "Ship it"},
+    ]
+    assert fwd._plan_todos_from_update({"plan": plan}) == [
+        {"content": "Ship it", "status": "pending", "activeForm": "Ship it"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_handle_turn_plan_updated_posts_todos_not_chat() -> None:
+    """turn/plan/updated feeds the Tasks panel, not the chat transcript.
+
+    The forwarder must post a single ``external_session_todos`` event with the
+    normalized plan, and must NOT post an ``external_conversation_item``
+    (chat message) — the regression guard for the panel-only behavior.
+    """
+    client = _RecordingClient()
+    params = {
+        "turnId": "turn_1",
+        "plan": [
+            {"step": "Investigate", "status": "inProgress"},
+            {"step": "Fix", "status": "pending"},
+        ],
+    }
+
+    await fwd._handle_turn_plan_updated(client, "conv_x", params)  # type: ignore[arg-type]
+
+    assert client.posts == [
+        (
+            "/v1/sessions/conv_x/events",
+            {
+                "type": "external_session_todos",
+                "data": {
+                    "todos": [
+                        {
+                            "content": "Investigate",
+                            "status": "in_progress",
+                            "activeForm": "Investigate",
+                        },
+                        {"content": "Fix", "status": "pending", "activeForm": "Fix"},
+                    ]
+                },
+            },
+        )
+    ]
+    assert all(body["type"] != "external_conversation_item" for _url, body in client.posts)
+
+
+@pytest.mark.asyncio
+async def test_handle_turn_plan_updated_empty_plan_posts_nothing() -> None:
+    """An empty/absent plan produces no post (matches Claude, which skips empties)."""
+    client = _RecordingClient()
+
+    await fwd._handle_turn_plan_updated(client, "conv_x", {"plan": []})  # type: ignore[arg-type]
+
+    assert client.posts == []

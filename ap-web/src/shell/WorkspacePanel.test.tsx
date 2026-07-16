@@ -40,6 +40,9 @@ function renderWorkspace(
     rightRailTab?: RightRailTab;
     selectedFilePath?: string | null;
     openFiles?: string[];
+    supportsTasksPanel?: boolean;
+    todosTotal?: number;
+    todosCompleted?: number;
   } = {},
 ) {
   const openFileViewer = vi.fn();
@@ -58,9 +61,9 @@ function renderWorkspace(
       terminalsLength={0}
       subagentsWorking={0}
       agentCount={1}
-      isClaudeNative={false}
-      todosCompleted={0}
-      todosTotal={0}
+      supportsTasksPanel={overrides.supportsTasksPanel ?? false}
+      todosCompleted={overrides.todosCompleted ?? 0}
+      todosTotal={overrides.todosTotal ?? 0}
       rootSessionId={null}
       selectedFilePath={overrides.selectedFilePath ?? null}
       openFiles={overrides.openFiles ?? []}
@@ -177,5 +180,31 @@ describe("WorkspacePanel content area", () => {
     // slot and the viewer is unmounted.
     expect(screen.getByTestId("files-panel-stub")).toBeInTheDocument();
     expect(screen.queryByTestId("file-viewer-stub")).toBeNull();
+  });
+});
+
+describe("WorkspacePanel Tasks tab", () => {
+  it("shows the Tasks tab + panel for a tasks-capable session (e.g. codex-native) with todos", () => {
+    // A Codex session reaches WorkspacePanel with supportsTasksPanel=true, the
+    // same value AppShell now derives for both claude- and codex-native
+    // wrappers. With ≥1 todo the trigger and (on the todos tab) the panel show.
+    renderWorkspace({ supportsTasksPanel: true, todosTotal: 2, todosCompleted: 1 });
+    expect(screen.getByRole("tab", { name: /tasks/i })).toBeInTheDocument();
+
+    cleanup();
+    renderWorkspace({
+      rightRailTab: "todos",
+      supportsTasksPanel: true,
+      todosTotal: 2,
+      todosCompleted: 1,
+    });
+    expect(screen.getByTestId("todos-stub")).toBeInTheDocument();
+  });
+
+  it("hides the Tasks tab for a non-capable session even when todos exist", () => {
+    // Guards the harness gate: a session that doesn't feed the panel
+    // (supportsTasksPanel=false) must not surface the Tasks tab.
+    renderWorkspace({ supportsTasksPanel: false, todosTotal: 2 });
+    expect(screen.queryByRole("tab", { name: /tasks/i })).toBeNull();
   });
 });

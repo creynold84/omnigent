@@ -2609,32 +2609,30 @@ async def _handle_turn_plan_updated(
     params: dict[str, Any],
 ) -> None:
     """
-    Mirror a Codex plan update as a visible assistant message.
+    Mirror a Codex plan update into the Omnigent Tasks panel.
 
-    Codex emits plan changes as app-server notifications rather than
-    ordinary assistant text. Omnigent web currently renders persisted message
-    items, not a dedicated plan item type, so the native bridge converts
-    the structured plan into a compact assistant message.
+    Codex emits structured plan changes (``params["plan"]`` is a list of
+    ``{step, status}`` entries) as app-server notifications. These are
+    normalized into the same ``external_session_todos`` events the
+    claude-native forwarder posts, so the web Tasks panel renders Codex
+    plan progress the same way it renders Claude todos — rather than
+    appending repeated Markdown messages to the chat transcript.
 
     :param client: HTTP client for Omnigent event posts.
     :param session_id: Omnigent conversation id, e.g. ``"conv_abc123"``.
     :param params: Codex ``turn/plan/updated`` params.
     :returns: None.
     """
-    text = _plan_text_from_update(params)
-    if not text:
+    todos = _plan_todos_from_update(params)
+    if todos is None:
         return
-    await _post_external_item(
+    response = await _post_session_event(
         client,
         session_id,
-        item_type="message",
-        item_data={
-            "role": "assistant",
-            "agent": _AGENT_NAME,
-            "content": [{"type": "output_text", "text": text}],
-        },
-        response_id=_response_id(params),
+        event_type="external_session_todos",
+        data={"todos": todos},
     )
+    _log_failed_session_event_post("external_session_todos", response)
 
 
 def _is_codex_elicitation_request(event: CodexMessage) -> bool:
@@ -5239,49 +5237,53 @@ def _json_string(value: dict[str, Any]) -> str | None:
         return None
 
 
-def _plan_text_from_update(params: dict[str, Any]) -> str | None:
+def _plan_todos_from_update(params: dict[str, Any]) -> list[dict[str, Any]] | None:
     """
-    Render a Codex ``turn/plan/updated`` payload as Markdown text.
+    Map a Codex ``turn/plan/updated`` payload to ``external_session_todos`` items.
 
-    :param params: Codex plan update params.
-    :returns: Markdown plan text, or ``None`` when no valid plan steps
-        are present.
+    Each Codex plan entry (``{step, status}``) becomes a todo item in the
+    shape the Sessions API expects (``{content, status, activeForm}``).
+    Codex has no gerund/active form, so ``step`` is reused for both
+    ``content`` and ``activeForm`` (the same approach the claude-native
+    forwarder uses for native task hooks). Statuses are normalized to the
+    snake_case vocabulary the server accepts.
+
+    :param params: Codex ``turn/plan/updated`` params.
+    :returns: Todo items for the ``external_session_todos`` event, or
+        ``None`` when the payload carries no valid plan steps.
     """
     plan = params.get("plan")
     if not isinstance(plan, list) or not plan:
         return None
-    lines: list[str] = []
-    explanation = params.get("explanation")
-    if isinstance(explanation, str) and explanation:
-        lines.append(explanation)
-        lines.append("")
-    lines.append("Plan:")
+    todos: list[dict[str, Any]] = []
     for entry in plan:
         if not isinstance(entry, dict):
             continue
         step = entry.get("step")
         if not isinstance(step, str) or not step:
             continue
-        status = entry.get("status")
-        marker = _plan_status_marker(status)
-        lines.append(f"{marker} {step}")
-    if len(lines) == 1 or (len(lines) == 3 and lines[-1] == "Plan:"):
-        return None
-    return "\n".join(lines)
+        todos.append(
+            {
+                "content": step,
+                "status": _normalize_plan_status(entry.get("status")),
+                "activeForm": step,
+            }
+        )
+    return todos or None
 
 
-def _plan_status_marker(status: Any) -> str:
+def _normalize_plan_status(status: Any) -> str:
     """
-    Return a readable Markdown marker for a Codex plan step status.
+    Normalize a Codex plan step status to the Sessions API todo vocabulary.
 
-    :param status: Codex step status value.
-    :returns: Markdown list marker.
+    :param status: Codex step status value, e.g. ``"inProgress"``.
+    :returns: One of ``"pending"``, ``"in_progress"``, ``"completed"``.
     """
     if status == "completed":
-        return "- [x]"
+        return "completed"
     if status in {"inProgress", "in_progress"}:
-        return "- [~]"
-    return "- [ ]"
+        return "in_progress"
+    return "pending"
 
 
 def _response_id(params: dict[str, Any]) -> str:

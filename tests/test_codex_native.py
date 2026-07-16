@@ -4881,12 +4881,15 @@ def test_forwarder_skips_user_recovery_when_user_seen_live(tmp_path: Path) -> No
 
 def test_forwarder_posts_codex_turn_plan_update(tmp_path: Path) -> None:
     """
-    Codex ``turn/plan/updated`` notifications are visible in Omnigent web.
+    Codex ``turn/plan/updated`` notifications feed the Omnigent Tasks panel.
 
     Plan mode emits plan state through a dedicated app-server
-    notification rather than assistant text. If the forwarder ignores
-    it, the terminal shows the plan while the web transcript appears to
-    skip straight to the final prompt.
+    notification rather than assistant text. The forwarder normalizes it
+    into an ``external_session_todos`` event (the same pipeline the
+    claude-native forwarder uses) so the web Tasks panel renders live plan
+    progress, rather than appending Markdown to the chat transcript. This
+    exercises the full ``_handle_event`` dispatch path; the direct-call and
+    mapping unit tests live in ``test_codex_native_forwarder.py``.
     """
     posted: list[dict[str, Any]] = []
 
@@ -4934,24 +4937,23 @@ def test_forwarder_posts_codex_turn_plan_update(tmp_path: Path) -> None:
     asyncio.run(run())
 
     assert len(posted) == 1
-    assert posted[0]["type"] == "external_conversation_item"
-    data = posted[0]["data"]
-    assert data["item_type"] == "message"
-    assert data["response_id"] == "codex_turn_123"
-    assert data["item_data"] == {
-        "role": "assistant",
-        "agent": "codex-native-ui",
-        "content": [
+    assert posted[0]["type"] == "external_session_todos"
+    # ``inProgress`` normalizes to ``in_progress``; ``step`` fills both
+    # ``content`` and ``activeForm`` (Codex has no gerund form).
+    assert posted[0]["data"] == {
+        "todos": [
             {
-                "type": "output_text",
-                "text": (
-                    "Plan:\n"
-                    "- [x] Inspect Codex plan events\n"
-                    "- [~] Mirror plans to web\n"
-                    "- [ ] Run checks"
-                ),
-            }
-        ],
+                "content": "Inspect Codex plan events",
+                "status": "completed",
+                "activeForm": "Inspect Codex plan events",
+            },
+            {
+                "content": "Mirror plans to web",
+                "status": "in_progress",
+                "activeForm": "Mirror plans to web",
+            },
+            {"content": "Run checks", "status": "pending", "activeForm": "Run checks"},
+        ]
     }
 
 

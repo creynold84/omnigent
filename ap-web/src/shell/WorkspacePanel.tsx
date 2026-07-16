@@ -160,8 +160,8 @@ interface WorkspacePanelProps {
    * badge denominator) — starts at 1 for a lone agent.
    */
   agentCount: number;
-  /** Whether this is a claude-native session (gates the Tasks tab). */
-  isClaudeNative: boolean;
+  /** Whether this session's harness feeds the Tasks panel (gates the Tasks tab). */
+  supportsTasksPanel: boolean;
   /** Number of completed todos (Tasks tab badge numerator). */
   todosCompleted: number;
   /** Total todo count (Tasks tab badge denominator + visibility gate). */
@@ -231,7 +231,7 @@ export function WorkspacePanel({
   terminalsLength,
   subagentsWorking,
   agentCount,
-  isClaudeNative,
+  supportsTasksPanel,
   todosCompleted,
   todosTotal,
   rootSessionId,
@@ -352,7 +352,7 @@ export function WorkspacePanel({
                 )}
               </TabsTrigger>
             )}
-            {isClaudeNative && todosTotal > 0 && (
+            {supportsTasksPanel && todosTotal > 0 && (
               <TabsTrigger
                 value="todos"
                 className="h-[32px] gap-[6px] rounded-[8px] px-[12px] text-[13px] leading-5"
@@ -418,7 +418,7 @@ export function WorkspacePanel({
           />
         ) : rightRailTab === "subagents" && rootSessionId ? (
           <SubagentsPanel conversationId={conversationId} rootSessionId={rootSessionId} />
-        ) : rightRailTab === "todos" && isClaudeNative ? (
+        ) : rightRailTab === "todos" && supportsTasksPanel ? (
           <TodoPanel frameless />
         ) : rightRailTab === "terminals" && showShellsTab ? (
           <InlineTerminalsSection conversationId={conversationId} onExpand={openTerminalsPanel} />

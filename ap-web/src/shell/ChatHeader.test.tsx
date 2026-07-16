@@ -18,7 +18,7 @@ const mobileMenu = {
   todosPanelOpen: false,
   hideTerminalsTab: false,
   terminalsLength: 0,
-  isClaudeNative: false,
+  supportsTasksPanel: false,
   todosCompleted: 0,
   todosTotal: 0,
   debugMode: false,

@@ -23,16 +23,18 @@ function TodoIcon({ status }: { status: TodoItem["status"] }) {
 }
 
 /**
- * Displays Claude Code's active todo list for `omnigent claude` sessions.
+ * Displays the active plan/TODO list for native sessions that feed it —
+ * claude-native (Claude Code's TodoWrite/task hooks) and codex-native
+ * (Codex's `turn/plan/updated` plan steps).
  *
  * Reads from `useChatStore.todos` which is populated by:
  * - the session snapshot on bind (from `_session_todos_cache` on the server)
- * - `session.todos` SSE events emitted whenever the forwarder detects a
- *   change in Claude's `~/.claude/todos/{session_id}-agent-{session_id}.json`
+ * - `session.todos` SSE events emitted whenever a forwarder posts an
+ *   `external_session_todos` update
  *
  * Renders nothing when the todo list is empty, so the panel occupies no
- * space for sessions that have never had todos (non-claude-native, or
- * claude-native before the first turn creates any todos).
+ * space for sessions that have never had todos (unsupported harness, or a
+ * supported one before its first plan/todo update).
  */
 export function TodoPanel({ frameless = false }: TodoPanelProps) {
   const todos = useChatStore((s) => s.todos);

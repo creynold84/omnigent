@@ -512,12 +512,14 @@ export interface SessionAgentChangedEvent {
 }
 
 /**
- * `session.todos` — todo-list update from a claude-native session.
+ * `session.todos` — plan/TODO-list update from a native session.
  *
- * Emitted by the Omnigent server when the claude-native forwarder receives
- * a `PostToolUse`/`TodoWrite` hook event from Claude Code. Clients
- * should replace their cached todo list entirely on each event (the
- * payload is the full current list, not a diff).
+ * Emitted by the Omnigent server when a native forwarder posts
+ * `external_session_todos`: the claude-native forwarder on a
+ * `PostToolUse`/`TodoWrite` hook event, or the codex-native forwarder on a
+ * `turn/plan/updated` notification. Clients should replace their cached todo
+ * list entirely on each event (the payload is the full current list, not a
+ * diff).
  *
  * Each todo item has:
  * - `content`: the task description string
