@@ -55,7 +55,7 @@ import { useServerInfo } from "@/lib/CapabilitiesContext";
 import { sandboxOptionLabel } from "@/lib/capabilities";
 import {
   isSlashCommandText,
-  slashCommandMatches,
+  rankedSlashCommandNames,
   SlashCommandMenu,
 } from "@/components/SlashCommandMenu";
 import { setPendingInitialPrompt } from "@/store/chatStore";
@@ -2525,7 +2525,7 @@ export function NewChatLandingScreen() {
   // Kept in sync with what SlashCommandMenu renders so keyboard nav
   // indexes into the same list.
   const slashMenuMatches = slashMenuOpen
-    ? Object.keys(skillCommands).filter((name) => slashCommandMatches(name, slashMenuQuery))
+    ? rankedSlashCommandNames(skillCommands, slashMenuQuery)
     : [];
   // Pre-select the first match whenever the filtered list changes, so
   // Tab/Enter complete the top item without arrowing down first (same

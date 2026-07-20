@@ -44,7 +44,12 @@ import type { ElicitationBlock } from "@/lib/blocks";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Composer, shouldQueueSend } from "./ChatPage";
 import type { QueuedMessage } from "@/store/chatStore";
-import { SlashCommandMenu, slashCommandMatches } from "@/components/SlashCommandMenu";
+import {
+  BUILTIN_SLASH_COMMANDS,
+  rankedSlashCommandNames,
+  SlashCommandMenu,
+  slashCommandMatches,
+} from "@/components/SlashCommandMenu";
 
 // These tests pin the slash-command suggestions menu UX in the composer:
 // (1) the first match is highlighted as soon as the menu opens, so Tab/Enter
@@ -148,6 +153,19 @@ describe("Composer slash-command menu", () => {
     expect(activeRow()?.textContent).toContain("/deslop");
     fireEvent.keyDown(ta, { key: "Tab" });
     expect(ta.value).toBe("/deslop ");
+  });
+
+  it("ranks a prefix built-in ahead of mid-string matches so a short query can't execute the wrong command", () => {
+    render(<Composer {...composerProps()} />);
+    const ta = textarea();
+    // "/e": /effort is a prefix match; /context and /help merely contain "e".
+    // Before prefix-priority ranking, /context (a no-arg builtin) was
+    // highlighted first and Tab/Enter executed it — a side-effecting
+    // regression. /effort must win and Tab fills it (it takes an argument).
+    fireEvent.change(ta, { target: { value: "/e" } });
+    expect(activeRow()?.textContent).toContain("/effort");
+    fireEvent.keyDown(ta, { key: "Tab" });
+    expect(ta.value).toBe("/effort ");
   });
 
   it("Enter completes the highlighted command instead of sending", () => {
@@ -878,6 +896,42 @@ describe("slashCommandMatches", () => {
 
   it("returns false when the query is nowhere in the name", () => {
     expect(slashCommandMatches("/context", "zzz")).toBe(false);
+  });
+});
+
+describe("rankedSlashCommandNames", () => {
+  it("ranks a prefix match ahead of commands that merely contain the query", () => {
+    // "/e": /effort is a prefix; /context, /model, /help only contain "e".
+    // Prefix-priority keeps /effort first so its auto-highlight + Enter can't
+    // execute an unrelated no-arg builtin (/context) as a side effect.
+    expect(rankedSlashCommandNames(BUILTIN_SLASH_COMMANDS, "e")[0]).toBe("/effort");
+  });
+
+  it("ranks /model ahead of commands that merely contain 'm'", () => {
+    // "/m": /model is a prefix; /compact contains "m". Was /compact first.
+    expect(rankedSlashCommandNames(BUILTIN_SLASH_COMMANDS, "m")[0]).toBe("/model");
+  });
+
+  it("keeps built-ins ahead of skills so the Commands section stays on top", () => {
+    const commands = { ...BUILTIN_SLASH_COMMANDS, "/superpowers:effort-helper": "x" };
+    const ranked = rankedSlashCommandNames(commands, "effort");
+    // Both /effort (builtin, prefix) and the skill (mid-string) match; the
+    // builtin must rank first so the render partition stays contiguous.
+    expect(ranked[0]).toBe("/effort");
+    expect(ranked.indexOf("/effort")).toBeLessThan(ranked.indexOf("/superpowers:effort-helper"));
+  });
+
+  it("ranks a prefix skill ahead of a mid-string skill, stably", () => {
+    // Insertion order is deep-research, research; ranking promotes the prefix
+    // match (research) above the mid-string one (deep-research contains "res").
+    const commands = { "/deep-research": "a", "/research": "b" };
+    expect(rankedSlashCommandNames(commands, "res")).toEqual(["/research", "/deep-research"]);
+  });
+
+  it("returns everything in insertion order for an empty query (lone '/')", () => {
+    expect(rankedSlashCommandNames(BUILTIN_SLASH_COMMANDS, "")).toEqual(
+      Object.keys(BUILTIN_SLASH_COMMANDS),
+    );
   });
 });
 

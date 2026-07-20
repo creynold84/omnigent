@@ -145,7 +145,7 @@ import { HostBadge } from "@/components/HostBadge";
 import {
   BUILTIN_SLASH_COMMANDS,
   isSlashCommandText,
-  slashCommandMatches,
+  rankedSlashCommandNames,
   SlashCommandMenu,
 } from "@/components/SlashCommandMenu";
 import { FileMentionMenu } from "@/components/FileMentionMenu";
@@ -4029,9 +4029,7 @@ export function Composer({
   };
   // Filtered matches — kept in sync with what SlashCommandMenu renders so
   // keyboard nav indexes into the same list.
-  const menuMatches = menuOpen
-    ? Object.keys(slashCommands).filter((name) => slashCommandMatches(name, menuQuery))
-    : [];
+  const menuMatches = menuOpen ? rankedSlashCommandNames(slashCommands, menuQuery) : [];
 
   // Pre-select the first match whenever the filtered list changes — both
   // when the menu first opens (matches go [] → non-empty) and as the query

@@ -2225,6 +2225,41 @@ def test_completer_substring_filters_real_registry() -> None:
     assert 0 < len(names) < len(all_names)
 
 
+def test_completer_ranks_prefix_before_substring(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Claim: prefix matches surface before mid-string matches (mirrors the
+    web menu's ``rankedSlashCommandNames``). Typing ``/e`` offers
+    ``/effort`` (a prefix) before ``/context`` (which merely contains
+    "e"), so the first completion is the one the user most likely meant —
+    not an unrelated command that happens to contain the letter.
+    """
+    fake = {
+        "/compact": ("Compact", _noop_handler),
+        "/context": ("Context", _noop_handler),
+        "/effort": ("Effort", _noop_handler),
+        "/model": ("Model", _noop_handler),
+    }
+    monkeypatch.setattr("omnigent.repl._repl.COMMANDS", fake)
+    names = [name for name, _, _ in _completions_for("/e")]
+    # /effort is the only prefix match; /context and /model merely contain
+    # "e" (/compact has none), so they rank after it.
+    assert names[0] == "/effort"
+    assert set(names) == {"/effort", "/context", "/model"}
+
+
+def test_completer_ranks_prefix_first_real_registry() -> None:
+    """
+    Claim: against the live registry, ``/m`` surfaces a prefix match
+    (e.g. ``/model``) first, ahead of commands that merely contain "m"
+    (e.g. ``/theme``, ``/compact``). Pins prefix-priority on the real
+    command set without coupling to the exact command list.
+    """
+    names = [name for name, _, _ in _completions_for("/m")]
+    assert "/model" in names
+    # The top completion is a genuine prefix match, not a mid-string one.
+    assert names[0][1:].lower().startswith("m")
+
+
 def test_completer_matches_name_leaf_after_namespace(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Claim: typing a namespaced skill's leaf name surfaces the full
