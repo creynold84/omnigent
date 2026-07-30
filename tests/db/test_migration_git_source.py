@@ -34,7 +34,7 @@ def test_migration_upgrade_downgrade_reversible(tmp_path) -> None:
     """Exercise ga10gitsrc01 up→down against a scratch DB via alembic.
 
     The other tests only introspect the ORM. This drives alembic to head, then
-    down to ``b3c4d5e6f7a8`` (the revision just below ga10), asserting the
+    down one revision (reverting exactly ga10gitsrc01), asserting the
     migration's reversibility — all five git columns appear on upgrade and are
     gone on downgrade.
     """
@@ -61,9 +61,10 @@ def test_migration_upgrade_downgrade_reversible(tmp_path) -> None:
     up_cols = {c["name"] for c in inspect(create_engine(db_url)).get_columns("agents")}
     assert {"git_url", "git_ref", "git_subpath", "git_commit", "git_host_id"} <= up_cols
 
-    # Downgrade to the revision just below ga10 — runs ga20.downgrade() then
-    # ga10.downgrade(), removing ALL git columns.
-    _alembic("downgrade", "b3c4d5e6f7a8")
+    # Downgrade exactly one revision — reverts ga10gitsrc01, removing all
+    # five git columns (relative -1 keeps this robust to what the parent
+    # revision id happens to be).
+    _alembic("downgrade", "-1")
     with create_engine(db_url).connect() as conn:
         down_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(agents)"))}
     assert not (
