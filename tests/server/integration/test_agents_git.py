@@ -16,6 +16,7 @@ A minimal ``HostConnection`` is registered in ``app.state.host_registry``
 so ``_require_host_conn`` finds the fake host and returns it — we still
 exercise the 409 path when a host is NOT registered.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -165,9 +166,7 @@ async def test_import_git_bad_url_maps_to_400(app, client: httpx.AsyncClient, mo
     async def _raise_proxy(*, host_registry, host_conn, git_url, git_ref, git_subpath):
         raise GitImportProxyError("git clone failed: not a valid git URL")
 
-    monkeypatch.setattr(
-        "omnigent.server.routes.agents.clone_and_bundle_on_host", _raise_proxy
-    )
+    monkeypatch.setattr("omnigent.server.routes.agents.clone_and_bundle_on_host", _raise_proxy)
 
     resp = await client.post(
         "/v1/agents/import-git",
@@ -261,9 +260,7 @@ async def test_refresh_rejects_non_git_agent(client: httpx.AsyncClient, db_uri: 
     assert "not imported from git" in resp.text
 
 
-async def test_refresh_rejects_offline_host(
-    app, client: httpx.AsyncClient, tmp_path, monkeypatch
-):
+async def test_refresh_rejects_offline_host(app, client: httpx.AsyncClient, tmp_path, monkeypatch):
     """If the stored git_host_id host goes offline, refresh returns 409 CONFLICT."""
     repo = _local_repo(tmp_path)
     agent = await _import(app, client, repo, monkeypatch)

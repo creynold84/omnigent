@@ -94,7 +94,10 @@ def clone_and_bundle(
         cmd += ["--", clone_url, str(dest)]
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=CLONE_TIMEOUT_SECONDS,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=CLONE_TIMEOUT_SECONDS,
             )
         except FileNotFoundError as exc:
             raise OmnigentError(
@@ -153,7 +156,10 @@ def clone_and_bundle(
 def _current_branch(repo: Path) -> str:
     out = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=repo, capture_output=True, text=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
         timeout=CLONE_TIMEOUT_SECONDS,
     )
     return out.stdout.strip()
@@ -161,7 +167,11 @@ def _current_branch(repo: Path) -> str:
 
 def _head_sha(repo: Path) -> str:
     out = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True,
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
         timeout=CLONE_TIMEOUT_SECONDS,
     )
     return out.stdout.strip()

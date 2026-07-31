@@ -74,6 +74,4 @@ def test_agent_bundle_does_not_import_cli() -> None:
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"omnigent.agent_bundle imported omnigent.cli:\n{result.stderr}"
-    )
+    assert result.returncode == 0, f"omnigent.agent_bundle imported omnigent.cli:\n{result.stderr}"

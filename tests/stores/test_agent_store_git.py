@@ -1,4 +1,5 @@
 """Agent store round-trips git-source provenance and refresh updates the SHA."""
+
 from __future__ import annotations
 
 import pytest
@@ -9,15 +10,19 @@ from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
 
 @pytest.fixture
 def store(tmp_path):
-    return SqlAlchemyAgentStore(f"sqlite:///{tmp_path/'agents.db'}")
+    return SqlAlchemyAgentStore(f"sqlite:///{tmp_path / 'agents.db'}")
 
 
 def test_create_persists_git_fields(store):
     aid = generate_agent_id()
     agent = store.create(
-        aid, "git-agent", f"{aid}/deadbeef",
-        git_url="https://github.com/org/repo", git_ref="main",
-        git_subpath=None, git_commit="abc123",
+        aid,
+        "git-agent",
+        f"{aid}/deadbeef",
+        git_url="https://github.com/org/repo",
+        git_ref="main",
+        git_subpath=None,
+        git_commit="abc123",
     )
     assert agent.git_url == "https://github.com/org/repo"
     assert agent.git_ref == "main"

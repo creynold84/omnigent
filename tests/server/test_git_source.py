@@ -1,4 +1,5 @@
 """Unit tests for git_source: URL guard, clone, bundle, SHA resolution."""
+
 from __future__ import annotations
 
 import io
@@ -12,35 +13,41 @@ from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.git_source import _inject_token, clone_and_bundle, validate_git_url
 
 
-@pytest.mark.parametrize("url", [
-    "https://github.com/org/repo",
-    "https://github.com/org/repo.git",
-    "git@github.com:org/repo.git",
-    "ssh://git@github.com/org/repo.git",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://github.com/org/repo",
+        "https://github.com/org/repo.git",
+        "git@github.com:org/repo.git",
+        "ssh://git@github.com/org/repo.git",
+    ],
+)
 def test_validate_git_url_accepts_remote(url):
     validate_git_url(url)  # no raise
 
 
-@pytest.mark.parametrize("url", [
-    "file:///etc/passwd",
-    "/local/path/repo",
-    "../repo",
-    "ftp://example.com/repo",
-    "",
-    # CRITICAL 1 — file:// with user@host:path must NOT slip through the SCP regex
-    "file://user@localhost:/tmp/repo",
-    "file://x@y:z",
-    # CRITICAL 1 (argument injection) — a leading-dash "URL" must be rejected so
-    # ``git clone`` can never parse it as an option (e.g. --upload-pack=<cmd>,
-    # RCE on the host). These all previously slipped through the SCP regex.
-    "--upload-pack=touchX@h:p",
-    "-oProxyCommand=x@h:p",
-    "-c@h:p",
-    "--depth@h:p",
-    "-",
-    "--",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "/local/path/repo",
+        "../repo",
+        "ftp://example.com/repo",
+        "",
+        # CRITICAL 1 — file:// with user@host:path must NOT slip through the SCP regex
+        "file://user@localhost:/tmp/repo",
+        "file://x@y:z",
+        # CRITICAL 1 (argument injection) — a leading-dash "URL" must be rejected so
+        # ``git clone`` can never parse it as an option (e.g. --upload-pack=<cmd>,
+        # RCE on the host). These all previously slipped through the SCP regex.
+        "--upload-pack=touchX@h:p",
+        "-oProxyCommand=x@h:p",
+        "-c@h:p",
+        "--depth@h:p",
+        "-",
+        "--",
+    ],
+)
 def test_validate_git_url_rejects_local_and_bad_schemes(url):
     with pytest.raises(OmnigentError) as exc:
         validate_git_url(url)
@@ -105,11 +112,7 @@ _VALID_CONFIG = (
 
 def _entries(bundle: bytes) -> dict[str, str]:
     with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:gz") as tf:
-        return {
-            m.name: tf.extractfile(m).read().decode()
-            for m in tf.getmembers()
-            if m.isfile()
-        }
+        return {m.name: tf.extractfile(m).read().decode() for m in tf.getmembers() if m.isfile()}
 
 
 def test_clone_and_bundle_root_agent(tmp_path):

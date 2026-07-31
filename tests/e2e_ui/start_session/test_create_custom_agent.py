@@ -475,9 +475,9 @@ async def _drive_hidden_on_sandbox(base_url: str, session_id: str) -> None:
             # sandbox has no create path for an uploaded bundle), so the create
             # submenu group is never in the DOM.
             await page.get_by_test_id("new-chat-landing-agent-select").click()
-            await expect(
-                page.get_by_test_id("new-chat-landing-create-agent-group")
-            ).to_have_count(0)
+            await expect(page.get_by_test_id("new-chat-landing-create-agent-group")).to_have_count(
+                0
+            )
 
             # Switch to the connected host: with no custom agents yet, the
             # create submenu is top-level (not nested under "Custom agents").

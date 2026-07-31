@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
+from omnigent.git_source import clone_and_bundle as real_clone_and_bundle
 from omnigent.host.connect import (
     _HOST_CLONE_MAX_BUNDLE_BYTES,
     HostProcess,
 )
-from omnigent.git_source import clone_and_bundle as real_clone_and_bundle
 from omnigent.host.frames import HostCloneAndBundleFrame
 from omnigent.host.identity import HostIdentity
 
@@ -61,11 +61,7 @@ def _tar_entries(bundle_b64: str) -> dict[str, str]:
     """Decode a base64 bundle and return {member_name: content} for files."""
     raw = base64.b64decode(bundle_b64)
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tf:
-        return {
-            m.name: tf.extractfile(m).read().decode()
-            for m in tf.getmembers()
-            if m.isfile()
-        }
+        return {m.name: tf.extractfile(m).read().decode() for m in tf.getmembers() if m.isfile()}
 
 
 _VALID_CONFIG = (

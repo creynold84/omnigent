@@ -121,9 +121,7 @@ async def clone_and_bundle_on_host(
         op="clone-and-bundle",
         timeout=_CLONE_TIMEOUT_S,
         unavailable_exc=GitImportHostUnavailableError,
-        unavailable_hint=(
-            "it may be running an older version that does not support git import"
-        ),
+        unavailable_hint=("it may be running an older version that does not support git import"),
     )
     if result.get("status") != "ok":
         raise GitImportProxyError(

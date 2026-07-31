@@ -80,9 +80,7 @@ class CreatedWorktree:
     branch: str
 
 
-_WORKTREE_UNAVAILABLE_HINT = (
-    "it may be running an older version that does not support worktrees"
-)
+_WORKTREE_UNAVAILABLE_HINT = "it may be running an older version that does not support worktrees"
 
 
 async def create_worktree_on_host(

@@ -1,4 +1,5 @@
 """The agents table gains nullable git-source columns; existing rows read NULL."""
+
 from __future__ import annotations
 
 from sqlalchemy import inspect
@@ -23,8 +24,9 @@ def test_git_columns_are_nullable() -> None:
 
 
 def test_fresh_engine_creates_git_columns(tmp_path) -> None:
-    engine = get_or_create_engine(f"sqlite:///{tmp_path/'a.db'}")
+    engine = get_or_create_engine(f"sqlite:///{tmp_path / 'a.db'}")
     from omnigent.db.db_models import OmnigentBase
+
     OmnigentBase.metadata.create_all(engine)
     cols = {c["name"] for c in inspect(engine).get_columns("agents")}
     assert set(_GIT_COLUMNS) <= cols
@@ -52,7 +54,10 @@ def test_migration_upgrade_downgrade_reversible(tmp_path) -> None:
     def _alembic(*args: str) -> None:
         result = subprocess.run(
             ["uv", "run", "alembic", "-c", ini_path, *args],
-            capture_output=True, text=True, cwd=repo_root, env=env,
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            env=env,
         )
         assert result.returncode == 0, f"alembic {args} failed:\n{result.stdout}\n{result.stderr}"
 
@@ -67,6 +72,6 @@ def test_migration_upgrade_downgrade_reversible(tmp_path) -> None:
     _alembic("downgrade", "-1")
     with create_engine(db_url).connect() as conn:
         down_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(agents)"))}
-    assert not (
-        {"git_url", "git_ref", "git_subpath", "git_commit", "git_host_id"} & down_cols
-    ), f"git columns should be gone after downgrade, found: {down_cols}"
+    assert not ({"git_url", "git_ref", "git_subpath", "git_commit", "git_host_id"} & down_cols), (
+        f"git columns should be gone after downgrade, found: {down_cols}"
+    )

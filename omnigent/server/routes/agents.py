@@ -180,7 +180,8 @@ def create_agents_router(
             raise OmnigentError(f"Agent not found: {agent_id!r}", code=ErrorCode.NOT_FOUND)
         if agent.git_url is None:
             raise OmnigentError(
-                "This agent was not imported from git.", code=ErrorCode.INVALID_INPUT,
+                "This agent was not imported from git.",
+                code=ErrorCode.INVALID_INPUT,
             )
         if agent.git_host_id is None:
             raise OmnigentError(
@@ -228,12 +229,18 @@ def create_agents_router(
             return _to_agent_object(agent, agent_cache)  # same content, no-op
         await asyncio.to_thread(artifact_store.put, new_loc, bundle_bytes)
         updated = await asyncio.to_thread(
-            agent_store.update, agent.id, new_loc, git_commit=sha,
+            agent_store.update,
+            agent.id,
+            new_loc,
+            git_commit=sha,
         )
         if updated is None:
             raise OmnigentError(f"Agent not found: {agent.id!r}", code=ErrorCode.NOT_FOUND)
         agent_cache.replace(
-            agent.id, new_loc, bundle_bytes, expand_env=agent.session_id is None,
+            agent.id,
+            new_loc,
+            bundle_bytes,
+            expand_env=agent.session_id is None,
         )
         return _to_agent_object(updated, agent_cache)
 
