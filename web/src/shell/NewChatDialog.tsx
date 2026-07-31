@@ -1035,37 +1035,35 @@ export function AgentHarnessPicker({
   );
   // The "Create custom agent" affordance: a hover submenu on desktop, an
   // in-place drill-in page on touch (mirroring the "Custom agents" group).
-  const createAgentGroup = canCreateAgent
-    ? isMobile
-      ? (
-          <DropdownMenuItem
-            data-testid="new-chat-landing-create-agent-group"
-            onSelect={(e) => {
-              e.preventDefault();
-              setMobilePage("create");
-            }}
-            className="items-center gap-2 rounded-sm px-2 py-1.5 text-13 text-muted-foreground"
-          >
-            <PlusIcon className="size-3.5" />
-            <span className="flex-1">Create custom agent</span>
-            <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground/70" />
-          </DropdownMenuItem>
-        )
-      : (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger
-              data-testid="new-chat-landing-create-agent-group"
-              className="items-center gap-2 rounded-sm px-2 py-1.5 text-13 text-muted-foreground"
-            >
-              <PlusIcon className="size-3.5" />
-              <span className="flex-1">Create custom agent</span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-56 max-w-[calc(100vw-2rem)] overflow-y-auto p-1">
-              {createAgentSubmenuBody}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )
-    : null;
+  const createAgentGroup = canCreateAgent ? (
+    isMobile ? (
+      <DropdownMenuItem
+        data-testid="new-chat-landing-create-agent-group"
+        onSelect={(e) => {
+          e.preventDefault();
+          setMobilePage("create");
+        }}
+        className="items-center gap-2 rounded-sm px-2 py-1.5 text-13 text-muted-foreground"
+      >
+        <PlusIcon className="size-3.5" />
+        <span className="flex-1">Create custom agent</span>
+        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground/70" />
+      </DropdownMenuItem>
+    ) : (
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger
+          data-testid="new-chat-landing-create-agent-group"
+          className="items-center gap-2 rounded-sm px-2 py-1.5 text-13 text-muted-foreground"
+        >
+          <PlusIcon className="size-3.5" />
+          <span className="flex-1">Create custom agent</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-56 max-w-[calc(100vw-2rem)] overflow-y-auto p-1">
+          {createAgentSubmenuBody}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    )
+  ) : null;
   const hasCustomGroup = hasCustomAgents;
   // Shared body for the custom-agents submenu (desktop flyout + mobile page):
   // the custom agents, the pending upload, and the create action.

@@ -38,10 +38,7 @@ export function ImportAgentFromGitDialog({
   const { data: hosts } = useHosts();
   // Memoized so the array reference is stable across renders — otherwise the
   // preselect effect below re-runs every render (its dep would change each time).
-  const onlineHosts = useMemo(
-    () => (hosts ?? []).filter((h) => h.status === "online"),
-    [hosts],
-  );
+  const onlineHosts = useMemo(() => (hosts ?? []).filter((h) => h.status === "online"), [hosts]);
 
   // Preselect the only online host when the list loads and no choice has been made.
   useEffect(() => {
@@ -103,9 +100,7 @@ export function ImportAgentFromGitDialog({
               Host
             </label>
             {onlineHosts.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Connect a host to import from git
-              </p>
+              <p className="text-xs text-muted-foreground">Connect a host to import from git</p>
             ) : (
               <select
                 id="import-agent-host"

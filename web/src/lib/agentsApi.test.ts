@@ -45,9 +45,12 @@ describe("importAgentFromGit", () => {
   });
 
   it("throws the server message on 400", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(
-      { error: { message: "Not a valid git URL." } }, { ok: false, status: 400 }));
-    await expect(importAgentFromGit({ gitUrl: "file:///x", hostId: "h_1" })).rejects.toThrow(/valid git URL/);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ error: { message: "Not a valid git URL." } }, { ok: false, status: 400 }),
+    );
+    await expect(importAgentFromGit({ gitUrl: "file:///x", hostId: "h_1" })).rejects.toThrow(
+      /valid git URL/,
+    );
   });
 });
 

@@ -68,7 +68,9 @@ describe("ImportAgentFromGitDialog", () => {
     importMock.mockRejectedValueOnce(new Error("Not a valid git URL."));
     render(<ImportAgentFromGitDialog open onOpenChange={() => {}} onImported={() => {}} />);
     fireEvent.change(screen.getByLabelText(/host/i), { target: { value: "h_a" } });
-    fireEvent.change(screen.getByLabelText(/repo(sitory)? url/i), { target: { value: "file:///x" } });
+    fireEvent.change(screen.getByLabelText(/repo(sitory)? url/i), {
+      target: { value: "file:///x" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /import/i }));
     await waitFor(() => expect(screen.getByText(/valid git URL/i)).toBeInTheDocument());
   });
@@ -120,9 +122,7 @@ describe("ImportAgentFromGitDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /import/i }));
     await waitFor(() => expect(importMock).toHaveBeenCalled());
-    expect(importMock).toHaveBeenCalledWith(
-      expect.objectContaining({ hostId: "h_a" }),
-    );
+    expect(importMock).toHaveBeenCalledWith(expect.objectContaining({ hostId: "h_a" }));
   });
 
   it("shows connect-a-host message and disables submit when no online hosts", () => {

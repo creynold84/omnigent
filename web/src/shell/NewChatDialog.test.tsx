@@ -2695,9 +2695,7 @@ describe("NewChatLandingScreen custom-agent sandbox gating", () => {
     expect(importItem).toBeTruthy();
     // Choosing "Import from Git" opens the git import dialog.
     fireEvent.click(importItem);
-    await waitFor(() =>
-      expect(screen.getByLabelText(/repository url/i)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByLabelText(/repository url/i)).toBeInTheDocument());
   });
 
   // "Create custom agent" is a submenu (Configure manually / Import from Git)
@@ -2708,9 +2706,7 @@ describe("NewChatLandingScreen custom-agent sandbox gating", () => {
     fireEvent.pointerDown(trigger, { button: 0 });
     fireEvent.pointerUp(trigger, { button: 0 });
     fireEvent.click(trigger);
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-create-agent")).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByTestId("new-chat-landing-create-agent")).toBeTruthy());
   }
 
   // Switch the target to the connected host, then create + submit a pending
