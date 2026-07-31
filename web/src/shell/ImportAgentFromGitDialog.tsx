@@ -86,7 +86,10 @@ export function ImportAgentFromGitDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-4 sm:max-w-lg">
+      <DialogContent
+        data-testid="import-agent-dialog"
+        className="flex max-h-[85vh] flex-col gap-4 sm:max-w-lg"
+      >
         <DialogHeader>
           <DialogTitle>Import agent from git</DialogTitle>
         </DialogHeader>
@@ -180,6 +183,7 @@ export function ImportAgentFromGitDialog({
             Cancel
           </Button>
           <Button
+            data-testid="import-agent-submit"
             onClick={handleSubmit}
             disabled={!repoUrl.trim() || !hostId || submitting}
           >
