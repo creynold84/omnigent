@@ -240,7 +240,7 @@ def create_agents_router(
             agent.id,
             new_loc,
             bundle_bytes,
-            expand_env=agent.session_id is None,
+            expand_env=agent.expands_server_env,
         )
         return _to_agent_object(updated, agent_cache)
 

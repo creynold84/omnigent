@@ -5644,7 +5644,7 @@ async def _create_session_from_existing_agent(
                 _tel_loaded = agent_cache.load(
                     agent.id,
                     agent.bundle_location,
-                    expand_env=agent.session_id is None,
+                    expand_env=agent.expands_server_env,
                 )
                 _tel_harness = _spec_harness(_tel_loaded.spec)
             # Only log agent name for known built-in orchestrators to avoid

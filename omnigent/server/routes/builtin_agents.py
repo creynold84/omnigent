@@ -65,7 +65,7 @@ def _to_agent_object(agent: Agent, agent_cache: AgentCache) -> AgentObject:
         # env is allowed here; a tenant session-scoped agent would not
         # expand.
         loaded = agent_cache.load(
-            agent.id, agent.bundle_location, expand_env=agent.session_id is None
+            agent.id, agent.bundle_location, expand_env=agent.expands_server_env
         )
         if description is None:
             description = loaded.spec.description

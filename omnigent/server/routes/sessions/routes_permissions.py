@@ -380,7 +380,7 @@ def _to_agent_object(agent: Agent, cache: AgentCache | None) -> AgentObject:
     if cache is not None:
         try:
             loaded = cache.load(
-                agent.id, agent.bundle_location, expand_env=agent.session_id is None
+                agent.id, agent.bundle_location, expand_env=agent.expands_server_env
             )
             harness = loaded.spec.executor.harness_kind
             if description is None:
