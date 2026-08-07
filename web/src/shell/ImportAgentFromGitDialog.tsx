@@ -15,9 +15,11 @@ import { useHosts } from "@/hooks/useHosts";
  * Dialog for importing a custom agent from a git repository.
  *
  * Accepts a Repo URL (required), Host (required — git clone runs on the
- * selected host), Branch (optional), and Path in repo (optional). No
- * "Display name" field — the agent name is derived server-side from the
- * spec found at the given path.
+ * selected host), Branch (optional), Path in repo (optional), and Agent name
+ * (optional). Left blank, the name is derived server-side from the spec found
+ * at the given path; supplying one lets the same repo be imported more than
+ * once under distinct names (e.g. one agent per branch), since agent names
+ * must be unique.
  */
 export function ImportAgentFromGitDialog({
   open,
@@ -31,6 +33,7 @@ export function ImportAgentFromGitDialog({
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("");
   const [subpath, setSubpath] = useState("");
+  const [name, setName] = useState("");
   const [hostId, setHostId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +55,7 @@ export function ImportAgentFromGitDialog({
       setRepoUrl("");
       setBranch("");
       setSubpath("");
+      setName("");
       setHostId("");
       setError(null);
       setSubmitting(false);
@@ -70,6 +74,7 @@ export function ImportAgentFromGitDialog({
         gitUrl: trimmedUrl,
         gitRef: branch.trim() || undefined,
         gitSubpath: subpath.trim() || undefined,
+        name: name.trim() || undefined,
         hostId,
       });
       onImported(agent);
@@ -164,6 +169,27 @@ export function ImportAgentFromGitDialog({
               onChange={(e) => setSubpath(e.target.value)}
               placeholder="path in repo (optional)"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="import-agent-name"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Agent name
+            </label>
+            <Input
+              id="import-agent-name"
+              data-testid="import-agent-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="from repo config (optional)"
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave blank to use the name in the repo. Set one to import the same repo more than
+              once — e.g. a separate agent per branch.
+            </p>
           </div>
 
           {error !== null && (

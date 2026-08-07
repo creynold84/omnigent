@@ -202,6 +202,169 @@ async def _import(
 
 
 # ---------------------------------------------------------------------------
+# Agent-naming tests (optional ``name`` override)
+# ---------------------------------------------------------------------------
+
+
+async def test_import_git_name_override_persists(
+    app, client: httpx.AsyncClient, tmp_path, monkeypatch
+):
+    """An explicit ``name`` wins over the repo's own ``name:``."""
+    repo = _local_repo(tmp_path)
+    _register_fake_host(app)
+    monkeypatch.setattr(
+        "omnigent.server.routes.agents.clone_and_bundle_on_host",
+        _make_fake_clone(repo),
+    )
+
+    resp = await client.post(
+        "/v1/agents/import-git",
+        json={
+            "git_url": repo,
+            "git_ref": "main",
+            "host_id": _FAKE_HOST_ID,
+            "name": "myagent-dev",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    # Repo declares 'imported-agent'; the override must win.
+    assert resp.json()["name"] == "myagent-dev"
+
+
+async def test_import_git_blank_name_falls_back_to_spec(
+    app, client: httpx.AsyncClient, tmp_path, monkeypatch
+):
+    """A whitespace-only ``name`` is treated as absent, not as an empty name."""
+    repo = _local_repo(tmp_path)
+    _register_fake_host(app)
+    monkeypatch.setattr(
+        "omnigent.server.routes.agents.clone_and_bundle_on_host",
+        _make_fake_clone(repo),
+    )
+
+    resp = await client.post(
+        "/v1/agents/import-git",
+        json={"git_url": repo, "git_ref": "main", "host_id": _FAKE_HOST_ID, "name": "   "},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == "imported-agent"
+
+
+async def test_import_same_repo_twice_under_distinct_names(
+    app, client: httpx.AsyncClient, tmp_path, monkeypatch
+):
+    """The headline use case: one repo, two branches, two independent agents.
+
+    Without a name override the second import would 400 on the duplicate-name
+    guard (template agent names are unique), so this is what makes per-branch
+    agents of the same repo possible.
+    """
+    repo = _local_repo(tmp_path)
+    _register_fake_host(app)
+    monkeypatch.setattr(
+        "omnigent.server.routes.agents.clone_and_bundle_on_host",
+        _make_fake_clone(repo),
+    )
+
+    def run(*a: str) -> None:
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+
+    # A second branch of the SAME repo, with the same config.yaml name:.
+    run("branch", "dev")
+
+    first = await client.post(
+        "/v1/agents/import-git",
+        json={
+            "git_url": repo,
+            "git_ref": "main",
+            "host_id": _FAKE_HOST_ID,
+            "name": "myagent-main",
+        },
+    )
+    second = await client.post(
+        "/v1/agents/import-git",
+        json={
+            "git_url": repo,
+            "git_ref": "dev",
+            "host_id": _FAKE_HOST_ID,
+            "name": "myagent-dev",
+        },
+    )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    a, b = first.json(), second.json()
+    assert {a["name"], b["name"]} == {"myagent-main", "myagent-dev"}
+    assert a["id"] != b["id"]  # two independent agents
+    assert a["git_url"] == b["git_url"] == repo
+    assert (a["git_ref"], b["git_ref"]) == ("main", "dev")
+
+
+async def test_import_git_duplicate_override_name_rejected(
+    app, client: httpx.AsyncClient, tmp_path, monkeypatch
+):
+    """The uniqueness guard still applies to an overridden name."""
+    repo = _local_repo(tmp_path)
+    _register_fake_host(app)
+    monkeypatch.setattr(
+        "omnigent.server.routes.agents.clone_and_bundle_on_host",
+        _make_fake_clone(repo),
+    )
+
+    body = {
+        "git_url": repo,
+        "git_ref": "main",
+        "host_id": _FAKE_HOST_ID,
+        "name": "myagent-dev",
+    }
+    assert (await client.post("/v1/agents/import-git", json=body)).status_code == 200
+    dup = await client.post("/v1/agents/import-git", json=body)
+    assert dup.status_code == 400, dup.text
+    assert "already exists" in dup.text
+
+
+async def test_refresh_keeps_override_name_when_repo_renames(
+    app, client: httpx.AsyncClient, tmp_path, monkeypatch
+):
+    """Refresh never renames: a repo-side ``name:`` change is ignored.
+
+    The agent's name is its identity (chosen at import), so an upstream rename
+    must neither break refresh nor rename the agent.
+    """
+    repo = _local_repo(tmp_path)
+    _register_fake_host(app)
+    monkeypatch.setattr(
+        "omnigent.server.routes.agents.clone_and_bundle_on_host",
+        _make_fake_clone(repo),
+    )
+    imported = await client.post(
+        "/v1/agents/import-git",
+        json={
+            "git_url": repo,
+            "git_ref": "main",
+            "host_id": _FAKE_HOST_ID,
+            "name": "myagent-dev",
+        },
+    )
+    assert imported.status_code == 200, imported.text
+    agent = imported.json()
+
+    # Upstream renames the agent in its config.yaml and adds a commit.
+    def run(*a: str) -> None:
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+
+    (Path(repo) / "config.yaml").write_text(_CONFIG.replace("imported-agent", "renamed-upstream"))
+    run("add", "-A")
+    run("commit", "-m", "rename agent")
+
+    resp = await client.post(f"/v1/agents/{agent['id']}/refresh")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["name"] == "myagent-dev"  # unchanged by the upstream rename
+    assert body["version"] == 2
+    assert body["git_commit"] != agent["git_commit"]
+
+
+# ---------------------------------------------------------------------------
 # Refresh tests
 # ---------------------------------------------------------------------------
 

@@ -433,10 +433,10 @@ tools:
 
 Instead of running a local file, you can import an agent straight from a git
 repository through the web UI (New Chat → **Create custom agent** → **Import
-from Git**). You supply the repository URL and, optionally, a branch and a
-subpath; the clone runs **on a selected host** using that host's ambient git
-credentials (the same model as git worktrees), so private repos work without
-uploading any tokens to the server.
+from Git**). You supply the repository URL and, optionally, a branch, a
+subpath, and an agent name; the clone runs **on a selected host** using that
+host's ambient git credentials (the same model as git worktrees), so private
+repos work without uploading any tokens to the server.
 
 Repository layout:
 
@@ -450,12 +450,21 @@ Repository layout:
   the subpath at just the agent directory rather than importing a large
   monorepo root.
 
-After import you can **refresh** the agent from the New Chat picker, which
-re-clones the tracked branch on the same host and advances to its latest
-commit (bumping the agent's version only when the content actually changed).
-The agent's `name` is fixed at import time and is **immutable across
-refreshes** — if the repo later renames the agent in its `config.yaml`, the
-refresh is rejected rather than silently forking a second agent.
+Naming: agent names must be unique, so by default a repo can only be imported
+once — its `config.yaml` `name:` becomes the agent's name. Set **Agent name**
+in the dialog to override that, which lets you import the *same* repo several
+times under distinct names, e.g. one agent per branch:
+
+| Agent name | Repository | Branch |
+| --- | --- | --- |
+| `myagent-main` | `https://github.com/org/myagent` | `main` |
+| `myagent-dev` | `https://github.com/org/myagent` | `dev` |
+
+The name is chosen once, at import. **Refresh never renames an agent**: it
+re-clones the tracked branch on the same host and advances to its latest commit
+(bumping the agent's version only when the content actually changed), ignoring
+the repo's `name:` — so renaming the agent in `config.yaml` upstream won't break
+refresh or fork a second agent.
 
 ## Validation tips
 

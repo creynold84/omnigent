@@ -47,6 +47,8 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
  * @param input.gitUrl - The git repository URL (required).
  * @param input.gitRef - The git ref to check out (branch, tag, commit); null if omitted.
  * @param input.gitSubpath - Subdirectory within the repo containing the agent spec; null if omitted.
+ * @param input.name - Agent name, overriding the repo's own `name:`; null if omitted.
+ *   Lets one repo be imported several times under distinct names (e.g. per branch).
  * @returns The imported AgentObject.
  */
 export async function importAgentFromGit(input: {
@@ -54,6 +56,7 @@ export async function importAgentFromGit(input: {
   gitRef?: string;
   gitSubpath?: string;
   hostId: string;
+  name?: string;
 }): Promise<AgentObject> {
   const res = await authenticatedFetch("/v1/agents/import-git", {
     method: "POST",
@@ -63,6 +66,7 @@ export async function importAgentFromGit(input: {
       git_ref: input.gitRef ?? null,
       git_subpath: input.gitSubpath ?? null,
       host_id: input.hostId,
+      name: input.name ?? null,
     }),
   });
   if (!res.ok) throw await errorFromResponse(res);

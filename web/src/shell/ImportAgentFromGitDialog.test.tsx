@@ -33,9 +33,52 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ImportAgentFromGitDialog", () => {
-  it("has no Display name field", () => {
+  it("offers an optional Agent name field, empty by default", () => {
     render(<ImportAgentFromGitDialog open onOpenChange={() => {}} onImported={() => {}} />);
-    expect(screen.queryByLabelText(/display name/i)).toBeNull();
+    const nameInput = screen.getByLabelText(/agent name/i) as HTMLInputElement;
+    expect(nameInput).toBeInTheDocument();
+    // Blank ⇒ the server derives the name from the repo's config.yaml.
+    expect(nameInput.value).toBe("");
+  });
+
+  it("does not require a name to submit", () => {
+    render(<ImportAgentFromGitDialog open onOpenChange={() => {}} onImported={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/host/i), { target: { value: "h_a" } });
+    fireEvent.change(screen.getByLabelText(/repo(sitory)? url/i), {
+      target: { value: "https://github.com/org/repo" },
+    });
+    expect(screen.getByRole("button", { name: /import/i })).not.toBeDisabled();
+  });
+
+  it("sends a supplied name so one repo can be imported per branch", async () => {
+    importMock.mockResolvedValueOnce({ id: "ag_1", name: "myagent-dev" });
+    const onImported = vi.fn();
+    render(<ImportAgentFromGitDialog open onOpenChange={() => {}} onImported={onImported} />);
+    fireEvent.change(screen.getByLabelText(/host/i), { target: { value: "h_a" } });
+    fireEvent.change(screen.getByLabelText(/repo(sitory)? url/i), {
+      target: { value: "https://github.com/org/repo" },
+    });
+    fireEvent.change(screen.getByLabelText(/branch/i), { target: { value: "dev" } });
+    fireEvent.change(screen.getByLabelText(/agent name/i), { target: { value: "myagent-dev" } });
+    fireEvent.click(screen.getByRole("button", { name: /import/i }));
+    await waitFor(() => expect(onImported).toHaveBeenCalled());
+    expect(importMock).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "myagent-dev", gitRef: "dev" }),
+    );
+  });
+
+  it("omits a whitespace-only name so the repo's own name is used", async () => {
+    importMock.mockResolvedValueOnce({ id: "ag_1", name: "x" });
+    const onImported = vi.fn();
+    render(<ImportAgentFromGitDialog open onOpenChange={() => {}} onImported={onImported} />);
+    fireEvent.change(screen.getByLabelText(/host/i), { target: { value: "h_a" } });
+    fireEvent.change(screen.getByLabelText(/repo(sitory)? url/i), {
+      target: { value: "https://github.com/org/repo" },
+    });
+    fireEvent.change(screen.getByLabelText(/agent name/i), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: /import/i }));
+    await waitFor(() => expect(onImported).toHaveBeenCalled());
+    expect(importMock).toHaveBeenCalledWith(expect.objectContaining({ name: undefined }));
   });
 
   it("disables submit until a repo URL is entered", () => {

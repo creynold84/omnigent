@@ -32,8 +32,22 @@ describe("importAgentFromGit", () => {
       git_ref: "main",
       git_subpath: null,
       host_id: "h_abc",
+      // Unset ⇒ null: the server falls back to the repo's own name:.
+      name: null,
     });
     expect(out.id).toBe("ag_1");
+  });
+
+  it("sends an explicit name when supplied", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: "ag_3", name: "myagent-dev" }));
+    await importAgentFromGit({
+      gitUrl: "https://github.com/org/repo",
+      gitRef: "dev",
+      hostId: "h_abc",
+      name: "myagent-dev",
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string).name).toBe("myagent-dev");
   });
 
   it("includes host_id in the POST body", async () => {

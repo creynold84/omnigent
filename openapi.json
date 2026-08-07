@@ -1801,6 +1801,7 @@
         "type": "object"
       },
       "ImportGitBody": {
+        "description": "Request body for `POST /v1/agents/import-git`.",
         "properties": {
           "git_ref": {
             "anyOf": [
@@ -1811,6 +1812,7 @@
                 "type": "null"
               }
             ],
+            "description": "Branch/tag to track. `None` uses the default branch.",
             "title": "Git Ref"
           },
           "git_subpath": {
@@ -1822,15 +1824,30 @@
                 "type": "null"
               }
             ],
+            "description": "Agent directory within the repo. `None` \u21d2 root.",
             "title": "Git Subpath"
           },
           "git_url": {
+            "description": "Clone URL, e.g. `\"https://github.com/org/repo\"`.",
             "title": "Git Url",
             "type": "string"
           },
           "host_id": {
+            "description": "Host that performs the clone (holds the git credentials).",
             "title": "Host Id",
             "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional agent name, overriding the repo's `name:`. Lets the same repo be imported more than once under distinct names \u2014 e.g. one agent per branch (`myagent-main` / `myagent-dev`) \u2014 since template agent names must be unique. `None` falls back to the spec's own name.",
+            "title": "Name"
           }
         },
         "required": [
@@ -7156,7 +7173,7 @@
     },
     "/v1/agents/import-git": {
       "post": {
-        "description": "Clone a git repo on the given host, bundle, validate, and register.\n\nThe clone is always performed on a host (never server-side).  The\n`host_id` in the request body must refer to a host that is currently\nonline; if it is offline the route returns 409 CONFLICT.\n\n**Parameters**\n\n- `body` \u2014 Import spec with `git_url`, optional `git_ref`, optional `git_subpath`, and required `host_id`.\n\n**Returns:** The newly registered `AgentObject`.\n\n**Raises**\n\n- `OmnigentError` \u2014 400 INVALID_INPUT for bad URL, duplicate name, or bundle validation failure; 409 CONFLICT when the host is offline; 401 UNAUTHORIZED when unauthenticated in multi-user mode.",
+        "description": "Clone a git repo on the given host, bundle, validate, and register.\n\nThe clone is always performed on a host (never server-side).  The\n`host_id` in the request body must refer to a host that is currently\nonline; if it is offline the route returns 409 CONFLICT.\n\n**Parameters**\n\n- `body` \u2014 Import spec with `git_url`, optional `git_ref`, optional `git_subpath`, optional `name` (overrides the repo's own `name:`), and required `host_id`.\n\n**Returns:** The newly registered `AgentObject`.\n\n**Raises**\n\n- `OmnigentError` \u2014 400 INVALID_INPUT for bad URL, duplicate name, or bundle validation failure; 409 CONFLICT when the host is offline; 401 UNAUTHORIZED when unauthenticated in multi-user mode.",
         "operationId": "import_git_v1_agents_import_git_post",
         "requestBody": {
           "content": {

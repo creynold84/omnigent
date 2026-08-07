@@ -63,10 +63,23 @@ def _require_host_conn(host_id: str | None, request: Request) -> HostConnection:
 
 
 class ImportGitBody(BaseModel):
+    """Request body for ``POST /v1/agents/import-git``.
+
+    :param git_url: Clone URL, e.g. ``"https://github.com/org/repo"``.
+    :param git_ref: Branch/tag to track. ``None`` uses the default branch.
+    :param git_subpath: Agent directory within the repo. ``None`` ⇒ root.
+    :param host_id: Host that performs the clone (holds the git credentials).
+    :param name: Optional agent name, overriding the repo's ``name:``. Lets the
+        same repo be imported more than once under distinct names — e.g. one
+        agent per branch (``myagent-main`` / ``myagent-dev``) — since template
+        agent names must be unique. ``None`` falls back to the spec's own name.
+    """
+
     git_url: str
     git_ref: str | None = None
     git_subpath: str | None = None
     host_id: str
+    name: str | None = None
 
 
 def create_agents_router(
@@ -100,7 +113,8 @@ def create_agents_router(
 
         :param request: Incoming FastAPI request.
         :param body: Import spec with ``git_url``, optional ``git_ref``,
-            optional ``git_subpath``, and required ``host_id``.
+            optional ``git_subpath``, optional ``name`` (overrides the repo's
+            own ``name:``), and required ``host_id``.
         :returns: The newly registered :class:`AgentObject`.
         :raises OmnigentError: 400 INVALID_INPUT for bad URL, duplicate name,
             or bundle validation failure; 409 CONFLICT when the host is offline;
@@ -132,13 +146,22 @@ def create_agents_router(
             enforce_handler_allowlist=not local_single_user_enabled(),
         )
 
-        if spec.name is None:
-            raise OmnigentError("Bundle has no agent name.", code=ErrorCode.INVALID_INPUT)
+        # A caller-supplied name wins over the repo's own ``name:``; that is what
+        # lets one repo be imported several times (one agent per branch) despite
+        # template names being unique. Without an override the spec must name
+        # itself. Empty/whitespace is treated as "not supplied".
+        override = (body.name or "").strip()
+        agent_name = override or spec.name
+        if agent_name is None:
+            raise OmnigentError(
+                "Bundle has no agent name; supply 'name' to name it explicitly.",
+                code=ErrorCode.INVALID_INPUT,
+            )
 
-        existing = await asyncio.to_thread(agent_store.get_by_name, spec.name)
+        existing = await asyncio.to_thread(agent_store.get_by_name, agent_name)
         if existing is not None:
             raise OmnigentError(
-                f"An agent named {spec.name!r} already exists.",
+                f"An agent named {agent_name!r} already exists.",
                 code=ErrorCode.INVALID_INPUT,
             )
 
@@ -148,7 +171,7 @@ def create_agents_router(
         agent = await asyncio.to_thread(
             agent_store.create,
             agent_id,
-            spec.name,
+            agent_name,
             loc,
             spec.description,
             git_url=body.git_url,
@@ -207,16 +230,16 @@ def create_agents_router(
         bundle_bytes = cloned.bundle_bytes
         sha = cloned.commit_sha
 
-        spec = await asyncio.to_thread(
+        # Validate the refreshed bundle, but ignore its ``name:``. The agent's
+        # name is its identity here (set at import, possibly a caller-supplied
+        # override), so a repo-side rename must not break refresh — and with an
+        # override the two would never match anyway. The name is only ever
+        # chosen at import time; refresh never renames an agent.
+        await asyncio.to_thread(
             validate_agent_bundle,
             bundle_bytes,
             enforce_handler_allowlist=not local_single_user_enabled(),
         )
-        if spec.name != agent.name:
-            raise OmnigentError(
-                f"Repo now defines {spec.name!r}; agent name {agent.name!r} is immutable.",
-                code=ErrorCode.INVALID_INPUT,
-            )
         # Idempotency: if the git HEAD hasn't changed, nothing to do.
         if sha == agent.git_commit:
             return _to_agent_object(agent, agent_cache)  # idempotent no-op

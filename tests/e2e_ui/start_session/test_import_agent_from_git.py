@@ -233,6 +233,47 @@ async def _drive_submit(base_url: str, session_id: str) -> None:
             await browser.close()
 
 
+def test_import_from_git_sends_agent_name(seeded_session: tuple[str, str]) -> None:
+    """An explicit agent name is sent, so one repo can be imported per branch."""
+    base_url, session_id = seeded_session
+    _run_in_fresh_loop(_drive_named_submit(base_url, session_id))
+
+
+async def _drive_named_submit(base_url: str, session_id: str) -> None:
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch()
+        page = await browser.new_page()
+        try:
+            import_requests: list[dict[str, Any]] = []
+            await _register_routes(page, import_requests=import_requests)
+            await _seed_workspace(page)
+
+            await page.goto(f"{base_url}/")
+            await page.get_by_test_id("new-chat-landing-input").wait_for(
+                state="visible", timeout=30_000
+            )
+
+            await _open_import_from_git(page)
+            dialog = page.get_by_test_id("import-agent-dialog")
+            await expect(dialog).to_be_visible(timeout=5_000)
+
+            await dialog.get_by_label("Host").select_option(_HOST_ID)
+            await dialog.get_by_label("Repository URL").fill("https://github.com/org/repo")
+            await dialog.get_by_label("Branch").fill("dev")
+            # Naming the agent is what allows a second import of the same repo.
+            await dialog.get_by_label("Agent name").fill("myagent-dev")
+
+            await page.get_by_test_id("import-agent-submit").click()
+            await expect(dialog).to_be_hidden(timeout=5_000)
+
+            await _wait_until(lambda: len(import_requests) == 1)
+            body = import_requests[0]
+            assert body["name"] == "myagent-dev", body
+            assert body["git_ref"] == "dev", body
+        finally:
+            await browser.close()
+
+
 def test_import_from_git_shows_server_error(seeded_session: tuple[str, str]) -> None:
     """A rejected import surfaces the server error inline without closing."""
     base_url, session_id = seeded_session
