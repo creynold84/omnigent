@@ -93,7 +93,6 @@ describe("GitAgentProvenance", () => {
     });
     render(
       <QueryClientProvider client={qc}>
-        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
         <div onClick={rowClick} data-testid="row">
           <GitAgentProvenance agent={agent()} />
         </div>

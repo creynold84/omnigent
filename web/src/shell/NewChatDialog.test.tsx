@@ -3147,11 +3147,15 @@ describe("NewChatLandingScreen custom-agent sandbox gating", () => {
       expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("Sandbox"),
     );
     fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
+    // The connected host resolves to the "This machine" label (via
+    // displayNameForHost) rather than its raw name, matching the sibling tests.
     fireEvent.click(
-      screen.getAllByText("machine-1").find((el) => el.closest('[role="menuitem"]') !== null)!,
+      screen.getAllByText("This machine").find((el) => el.closest('[role="menuitem"]') !== null)!,
     );
     await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("machine-1"),
+      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain(
+        "This machine",
+      ),
     );
     fireEvent.pointerDown(screen.getByTestId("new-chat-landing-agent-select"), { button: 0 });
     await openCreateAgentSubmenu();
