@@ -1,7 +1,7 @@
 """add git source columns to agents
 
 Revision ID: ga10gitsrc01
-Revises: c4d5e6f7a8b9
+Revises: d5e9f1a2b3c4
 Create Date: 2026-07-30 00:00:00.000000
 
 Adds git-source provenance to the agents table so a template agent can be
@@ -26,7 +26,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "ga10gitsrc01"
-down_revision: str | None = "c4d5e6f7a8b9"
+down_revision: str | None = "d5e9f1a2b3c4"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

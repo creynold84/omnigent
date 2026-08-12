@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -378,6 +379,144 @@ async def test_cancel_auto_forwarder_task_cancels_and_awaits_registered_task() -
     finally:
         runner_app_mod._AUTO_FORWARDER_TASKS.pop(session_id, None)
         await _drain_forwarder_runs([run])
+
+
+@pytest.mark.asyncio
+async def test_teardown_codex_native_app_server_cancels_forwarder_and_closes_server() -> None:
+    """
+    Codex pane teardown cancels the forwarder and closes the app-server.
+
+    The idle pane reaper and an unexpected TUI exit both close only the tmux
+    pane; without this helper the per-session ``codex app-server`` (and its
+    forwarder) survives with no TUI, orphaning a ``codex`` process for the
+    runner's lifetime. Teardown must both cancel the registered forwarder and
+    close the registered app-server so neither leaks.
+    """
+    session_id = "c0d3f00d0000000000000000deadbeef"
+    run = _ForwarderRun()
+    closed = False
+
+    async def _parked() -> None:
+        run.task = asyncio.current_task()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            run.cancelled = True
+            raise
+
+    class _FakeAppServer:
+        async def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    try:
+        task = asyncio.create_task(_parked())
+        runner_app_mod._register_auto_forwarder_task(session_id, task)
+        runner_app_mod._AUTO_CODEX_APP_SERVERS[session_id] = _FakeAppServer()
+        await asyncio.sleep(0)
+
+        await runner_app_mod.teardown_codex_native_app_server(session_id)
+
+        assert task.cancelled(), "forwarder must be finished-cancelled after teardown"
+        assert run.cancelled is True
+        assert closed is True, "registered codex app-server must be closed"
+        assert session_id not in runner_app_mod._AUTO_CODEX_APP_SERVERS
+        assert session_id not in runner_app_mod._AUTO_FORWARDER_TASKS
+    finally:
+        runner_app_mod._AUTO_FORWARDER_TASKS.pop(session_id, None)
+        runner_app_mod._AUTO_CODEX_APP_SERVERS.pop(session_id, None)
+        await _drain_forwarder_runs([run])
+
+
+@pytest.mark.asyncio
+async def test_teardown_codex_native_app_server_noop_without_registered_server() -> None:
+    """
+    Teardown is a no-op for a session with no registered codex app-server.
+
+    The shared pane-teardown paths (reaper, terminal-exit publisher) fire for
+    every native harness, so calling this for a non-codex session — or a codex
+    session whose server is already gone — must not touch that session's
+    forwarder or raise.
+    """
+    session_id = "1111111122222222aaaaaaaabbbbbbbb"
+    run = _ForwarderRun()
+
+    async def _parked() -> None:
+        run.task = asyncio.current_task()
+        await asyncio.Event().wait()
+
+    try:
+        task = asyncio.create_task(_parked())
+        runner_app_mod._register_auto_forwarder_task(session_id, task)
+        await asyncio.sleep(0)
+
+        await runner_app_mod.teardown_codex_native_app_server(session_id)
+
+        # No registered codex app-server -> the forwarder is left untouched.
+        assert not task.done()
+        assert session_id in runner_app_mod._AUTO_FORWARDER_TASKS
+    finally:
+        runner_app_mod._AUTO_FORWARDER_TASKS.pop(session_id, None)
+        await _drain_forwarder_runs([run])
+
+
+@pytest.mark.asyncio
+async def test_teardown_all_codex_native_app_servers_closes_every_session() -> None:
+    """
+    Runner shutdown closes every registered codex app-server.
+
+    A host-initiated stop SIGTERMs the runner without a per-session
+    ``DELETE /v1/sessions``, so the shutdown sweep is the only thing that
+    closes the host-spawned codex app-servers (each spawned in its own
+    session, so it outlives the runner otherwise). Every registered session
+    must be torn down, and the registry left empty.
+    """
+    session_ids = [
+        "aaaa0000aaaa0000aaaa0000aaaa0000",
+        "bbbb1111bbbb1111bbbb1111bbbb1111",
+        "cccc2222cccc2222cccc2222cccc2222",
+    ]
+    runs = [_ForwarderRun() for _ in session_ids]
+    closed: list[str] = []
+
+    def _make_parked(run: _ForwarderRun) -> Any:
+        async def _parked() -> None:
+            run.task = asyncio.current_task()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                run.cancelled = True
+                raise
+
+        return _parked
+
+    class _FakeAppServer:
+        def __init__(self, sid: str) -> None:
+            self._sid = sid
+
+        async def close(self) -> None:
+            closed.append(self._sid)
+
+    try:
+        for sid, run in zip(session_ids, runs, strict=True):
+            task = asyncio.create_task(_make_parked(run)())
+            runner_app_mod._register_auto_forwarder_task(sid, task)
+            runner_app_mod._AUTO_CODEX_APP_SERVERS[sid] = _FakeAppServer(sid)
+        await asyncio.sleep(0)
+
+        await runner_app_mod.teardown_all_codex_native_app_servers()
+
+        assert sorted(closed) == sorted(session_ids), "every app-server must be closed"
+        assert all(sid not in runner_app_mod._AUTO_CODEX_APP_SERVERS for sid in session_ids)
+        assert all(sid not in runner_app_mod._AUTO_FORWARDER_TASKS for sid in session_ids)
+        assert all(run.cancelled for run in runs), "every forwarder must be cancelled"
+        # Idempotent: a second sweep with an empty registry is a no-op.
+        await runner_app_mod.teardown_all_codex_native_app_servers()
+    finally:
+        for sid in session_ids:
+            runner_app_mod._AUTO_FORWARDER_TASKS.pop(sid, None)
+            runner_app_mod._AUTO_CODEX_APP_SERVERS.pop(sid, None)
+        await _drain_forwarder_runs(runs)
 
 
 @pytest.mark.asyncio
@@ -828,3 +967,67 @@ async def test_auto_create_codex_terminal_recreate_cancels_prior_forwarder(
         runner_app_mod._AUTO_FORWARDER_TASKS.pop(session_id, None)
         runner_app_mod._AUTO_CODEX_APP_SERVERS.pop(session_id, None)
         await _drain_forwarder_runs(runs)
+
+
+async def test_forwarder_task_exit_paths_are_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Every forwarder-task exit path leaves an obituary log line.
+
+    A forwarder that stops takes mirroring, status events and the pane
+    busy signal with it, and a silent exit once presented as an hour-long
+    session blackout with nothing to grep for. Cancellation is routine
+    (INFO), an escaped exception is fatal to mirroring (ERROR, carrying
+    the traceback), and an unexpected clean return still warns.
+    """
+    cancelled_id = "0b17aa000000000000000000000000c1"
+    died_id = "0b17aa000000000000000000000000d2"
+    returned_id = "0b17aa000000000000000000000000e3"
+
+    async def _parked() -> None:
+        await asyncio.Event().wait()
+
+    async def _raises() -> None:
+        raise RuntimeError("client construction failed")
+
+    async def _returns() -> None:
+        return None
+
+    try:
+        with caplog.at_level(logging.INFO, logger="omnigent.runner.app"):
+            parked_task = asyncio.create_task(_parked(), name="claude-forwarder-cancelled")
+            runner_app_mod._register_auto_forwarder_task(cancelled_id, parked_task)
+            await asyncio.sleep(0)
+            parked_task.cancel()
+            await asyncio.wait([parked_task])
+
+            raising_task = asyncio.create_task(_raises(), name="claude-forwarder-died")
+            runner_app_mod._register_auto_forwarder_task(died_id, raising_task)
+            await asyncio.wait([raising_task])
+
+            returning_task = asyncio.create_task(_returns(), name="claude-forwarder-returned")
+            runner_app_mod._register_auto_forwarder_task(returned_id, returning_task)
+            await asyncio.wait([returning_task])
+            # Done callbacks run via call_soon after task completion.
+            await asyncio.sleep(0)
+
+        def _obits(level: int, needle: str) -> list[logging.LogRecord]:
+            return [
+                record
+                for record in caplog.records
+                if record.name == "omnigent.runner.app"
+                and record.levelno == level
+                and needle in record.getMessage()
+            ]
+
+        assert _obits(logging.INFO, "cancelled; session=" + cancelled_id)
+        died = _obits(logging.ERROR, "died; session mirroring is down")
+        assert died and died[0].exc_info is not None, (
+            "a forwarder killed by an escaped exception must log an ERROR "
+            "obituary carrying the traceback"
+        )
+        assert _obits(logging.WARNING, "returned; session mirroring has stopped")
+    finally:
+        for sid in (cancelled_id, died_id, returned_id):
+            runner_app_mod._AUTO_FORWARDER_TASKS.pop(sid, None)

@@ -1145,7 +1145,7 @@ def _bundle_with_harnessed_subagents(name: str, sub_agents: list[dict[str, Any]]
 
     ``tests.server.helpers.build_agent_bundle`` writes sub-agent configs
     without an ``executor`` block, so it can't express a native harness.
-    This minimal builder writes ``agents/<name>/config.yaml`` with the
+    This minimal builder writes ``agents/<dir>/config.yaml`` with the
     given ``harness`` so the create-session path can resolve a native
     sub-agent's harness from the parent bundle.
 
@@ -1355,6 +1355,41 @@ async def test_native_subagent_yolo_args_reject_overlong_spec_value(
     error = resp.json()["error"]
     assert error["code"] == "invalid_input"
     assert "invalid terminal_launch_args in sub-agent spec" in error["message"]
+
+
+async def test_subagent_create_rejects_undeclared_name(
+    client: httpx.AsyncClient,
+) -> None:
+    """
+    A ``sub_agent_name`` the parent's spec does not declare fails the create.
+
+    The downstream spec-swap sites are all guarded by ``if ... is not None``
+    with no ``else``: a name that resolves to nothing would leave the
+    parent's spec, workdir, harness and instructions in place and boot the
+    child as a full clone of the parent — silently escalating a worker to
+    the orchestrator's capability and instruction surface. The create route
+    must reject the undeclared name up front (404) so nothing is persisted,
+    mirroring normal ``sys_session_send`` dispatch and the AGENTSPEC.md
+    contract that unlisted names are rejected.
+    """
+    parent = await _create_parent_with_subagents(
+        client,
+        name="orch-undeclared-subagent",
+        sub_agents=[{"name": "impl", "harness": "claude-native"}],
+    )
+    resp = await client.post(
+        "/v1/sessions",
+        json={
+            "agent_id": parent["agent_id"],
+            "parent_session_id": parent["session_id"],
+            "title": "ghost:task",
+            "sub_agent_name": "does-not-exist",
+        },
+    )
+    assert resp.status_code == 404, resp.text
+    error = resp.json()["error"]
+    assert error["code"] == "not_found"
+    assert "does-not-exist" in error["message"]
 
 
 @pytest.mark.parametrize(
@@ -1718,19 +1753,18 @@ async def test_subagent_idle_forward_recovers_via_parent_when_child_runner_stale
     assert recovered_for == [child["id"]]
 
 
-async def test_subagent_background_task_waiting_delivers_to_parent_as_idle(
+async def test_subagent_background_task_count_still_delivers_to_parent(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A sub-agent's background-task ``waiting`` still delivers terminal status.
+    """A lingering background shell must not strand the parent orchestrator.
 
-    Regression for the parent-orchestrator hang: a claude-native sub-agent
-    relabels its ``Stop`` turn-end ``idle`` to ``waiting`` when a background
-    shell lingers. The terminal-delivery branch only fires for
-    ``idle``/``failed``, so an un-collapsed ``waiting`` would skip delivery and
-    the parent would wait forever. The server must collapse the sub-agent's
-    background-task ``waiting`` to ``idle`` so delivery (here, the recovery
-    path) still runs for the child.
+    Regression for the parent-orchestrator hang. The ``Stop`` turn-end edge
+    carries the background-shell count, and the terminal-delivery branch fires
+    only for ``idle``/``failed`` — so the edge has to stay ``idle`` and let the
+    count ride alongside. (It used to be relabeled to ``waiting`` for the
+    spinner's sake, which skipped delivery and made the parent wait forever;
+    the spinner now stays lit off the count instead.)
     """
     child = await _create_native_child(client, name="orch-bg-waiting")
 
@@ -1753,13 +1787,13 @@ async def test_subagent_background_task_waiting_delivers_to_parent_as_idle(
         f"/v1/sessions/{child['id']}/events",
         json={
             "type": "external_session_status",
-            "data": {"status": "waiting", "background_task_count": 1},
+            "data": {"status": "idle", "background_task_count": 1},
         },
     )
 
-    # Delivery fired despite the incoming `waiting`: the collapse to `idle`
-    # let the terminal-status branch run for THIS child (recovery invoked,
-    # 202 Accepted) instead of silently skipping and stranding the parent.
+    # A positive count does not suppress delivery: the terminal-status branch
+    # ran for THIS child (recovery invoked, 202 Accepted) rather than silently
+    # skipping and stranding the parent.
     assert resp.status_code == 202, resp.text
     assert recovered_for == [child["id"]]
 

@@ -52,6 +52,7 @@ from omnigent.runner.native.orchestration import (
     _codex_forward_known_thread,
     _codex_native_launch_config,
     _codex_native_model_from_spec,
+    _codex_native_terminal_arrives_via_transfer,
     _codex_session_needs_runner_terminal,
     _codex_session_workspace,
     _CodexNativeLaunchConfig,
@@ -114,6 +115,7 @@ from omnigent.runner.native.orchestration import (
     _resolve_pi_resume_session,
     _resolved_spec_workdir,
     _resolved_workdir_for_spec,
+    _rewrap_like,
     _run_antigravity_reader,
     _session_labels_for_runner_spawn,
     _session_payload_for_host_spawn_check,
@@ -122,6 +124,8 @@ from omnigent.runner.native.orchestration import (
     _terminal_lookup_miss_reason,
     _terminal_tmux_pane,
     _unwrap_resolved_spec,
+    teardown_all_codex_native_app_servers,
+    teardown_codex_native_app_server,
 )
 
 __all__ = [
@@ -136,7 +140,6 @@ __all__ = [
     "_NATIVE_TERMINAL_START_FAILED_CODE",
     "_OPENCODE_POLICY_ACTION_TO_DECISION",
     "_OPENCODE_POLICY_EVALUATE_TIMEOUT_S",
-    "_PERMISSION_HOOK_AUTH_REFRESH_INTERVAL_S",
     "_REPL_TERMINAL_NAME",
     "_REPL_TERMINAL_SESSION_KEY",
     "_SESSION_LABEL_LOOKUP_TIMEOUT_SECONDS",
@@ -182,6 +185,7 @@ __all__ = [
     "_codex_forward_known_thread",
     "_codex_native_launch_config",
     "_codex_native_model_from_spec",
+    "_codex_native_terminal_arrives_via_transfer",
     "_codex_session_needs_runner_terminal",
     "_codex_session_workspace",
     "_cold_start_agy_conversation",
@@ -239,6 +243,7 @@ __all__ = [
     "_resolve_pi_resume_session",
     "_resolved_spec_workdir",
     "_resolved_workdir_for_spec",
+    "_rewrap_like",
     "_run_antigravity_reader",
     "_session_labels_for_runner_spawn",
     "_session_payload_for_host_spawn_check",
@@ -247,4 +252,6 @@ __all__ = [
     "_terminal_lookup_miss_reason",
     "_terminal_tmux_pane",
     "_unwrap_resolved_spec",
+    "teardown_all_codex_native_app_servers",
+    "teardown_codex_native_app_server",
 ]
