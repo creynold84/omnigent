@@ -1,18 +1,24 @@
-"""E2E: a claude-sdk session renders the context-window usage ring.
+"""E2E: a claude-sdk session's context ring and ``/compact`` command.
 
 A model-unpinned in-process ``claude-sdk`` agent (the Claude Pro/Max or
-gateway login shape) should show a context-window usage ring near the
-composer once the session reports usage, and it should persist across a
-reload — the same indicator a native session gets.
+gateway login shape) should:
+
+- show a context-window usage ring near the composer once the session
+  reports usage, persisting across a reload (the same indicator a native
+  session gets); and
+- offer the ``/compact`` slash command in the composer menu — claude-sdk is
+  not a native terminal wrapper, but its runner sends ``/compact`` to the
+  live SDK client to trigger native compaction, so the command is offered.
 
 The ring is harness-agnostic: ``ContextRing`` renders when
 ``context_window > 0 && last_total_tokens != null`` on the session snapshot.
 The server fixture seeds a normal ``hello_world`` session so the page boots
 against the real app/server; a route patch reshapes only
-``GET /v1/sessions/{id}`` into a claude-sdk snapshot carrying usage — no real
-Claude CLI turn is needed (the backend label-persistence path is covered by
-the Python relay suite). Mirrors ``_patch_session_as_claude_native`` in
-``test_claude_model_picker``.
+``GET /v1/sessions/{id}`` into a claude-sdk snapshot (carrying usage for the
+ring) — no real Claude CLI turn is needed (the backend label-persistence path
+is covered by the Python relay suite, and the runner ``/compact`` dispatch by
+``tests/runner/test_app_sessions_native_events_options.py``). Mirrors
+``_patch_session_as_claude_native`` in ``test_claude_model_picker``.
 """
 
 from __future__ import annotations
@@ -104,3 +110,33 @@ def test_context_ring_renders_for_claude_sdk_with_usage(
     # ring hydrates from the persisted snapshot, not just a transient event.
     page.reload()
     expect(page.get_by_label(re.compile(r"\d+% of context used"))).to_be_visible(timeout=15_000)
+
+
+def test_compact_command_offered_for_claude_sdk(
+    page: Page,
+    seeded_session: tuple[str, str],
+) -> None:
+    """The ``/compact`` slash command is offered for a claude-sdk session.
+
+    claude-sdk is not a native terminal wrapper (``isNativeWrapper`` stays
+    false), but its runner drives native SDK compaction by sending
+    ``/compact`` to the live client, so the composer offers the command. The
+    snapshot is patched to a claude-sdk harness — which populates the chat
+    store's ``sessionHarness`` on bind — and typing ``/compact`` surfaces the
+    ``slash-menu-item-compact`` row. A regression that gated ``/compact`` to
+    native wrappers only would leave the row absent here.
+
+    :param page: Playwright page fixture.
+    :param seeded_session: ``(base_url, session_id)`` for a real server-backed
+        session; the browser snapshot is patched to claude-sdk.
+    """
+    base_url, session_id = seeded_session
+    _patch_session_as_claude_sdk(page, session_id)
+
+    page.goto(f"{base_url}/c/{session_id}")
+    composer = page.get_by_label("Message the agent")
+    expect(composer).to_be_visible(timeout=30_000)
+
+    composer.fill("/compact")
+    compact_row = page.get_by_test_id("slash-menu-item-compact")
+    expect(compact_row).to_be_visible(timeout=15_000)
