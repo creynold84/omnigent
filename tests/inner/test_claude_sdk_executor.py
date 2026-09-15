@@ -5725,13 +5725,34 @@ class TestAskUserQuestionHook(unittest.TestCase):
         out = _run(cb({"tool_input": {}}, None, {}))
         self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
 
+    def test_hook_denies_on_malformed_payload(self):
+        # A non-dict PreToolUse payload can't yield a tool_input, so the hook
+        # fails closed with an explicit deny (never falls through) and never
+        # invokes the bridge — consistent with the handler-None deny path.
+        ex = self._make_executor()
+        ex._ask_question_handler = AsyncMock(return_value={"answers": {"q1": "a"}})
+        opts = SimpleNamespace(hooks=None)
+        ex._install_ask_user_question_hook(self._fake_sdk(), opts)
+        cb = self._aq_matcher(opts).hooks[0]
+        out = _run(cb("not-a-dict", None, {}))
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        ex._ask_question_handler.assert_not_awaited()
+
     def test_base_tools_excludes_ask_user_question_without_handler(self):
         # No bridge wired -> the tool must NOT be exposed (it would hang
         # headless without the intercept hook).
         ex = self._make_executor()
-        self.assertEqual(ex._base_tools(), ["Skill", "ToolSearch"])
+        self.assertEqual(ex._base_tools(self._fake_sdk()), ["Skill", "ToolSearch"])
 
     def test_base_tools_includes_ask_user_question_with_handler(self):
         ex = self._make_executor()
         ex._ask_question_handler = AsyncMock(return_value=None)
-        self.assertIn("AskUserQuestion", ex._base_tools())
+        self.assertIn("AskUserQuestion", ex._base_tools(self._fake_sdk()))
+
+    def test_base_tools_excludes_ask_user_question_when_hook_matcher_missing(self):
+        # Handler wired, but the SDK exposes no HookMatcher -> exposing the
+        # tool would leave it without an intercept. _base_tools must gate on
+        # the SAME predicate as the hook install (handler AND HookMatcher).
+        ex = self._make_executor()
+        ex._ask_question_handler = AsyncMock(return_value=None)
+        self.assertNotIn("AskUserQuestion", ex._base_tools(SimpleNamespace()))

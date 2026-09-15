@@ -2233,19 +2233,34 @@ class ClaudeSDKExecutor(Executor):
         hooks["PreToolUse"] = entries
         options.hooks = hooks
 
-    def _base_tools(self) -> list[str]:
+    def _ask_user_question_enabled(self, sdk: _ClaudeSDK) -> bool:
+        """Whether ``AskUserQuestion`` may be exposed to the model.
+
+        True only when BOTH the answer bridge is wired AND the SDK exposes
+        ``HookMatcher`` (so the PreToolUse intercept can actually be
+        installed). Exposing the tool without the intercept would hang
+        headless, so :meth:`_base_tools` and
+        :meth:`_install_ask_user_question_hook` gate on this single predicate
+        — they can never disagree.
+        """
+        return (
+            self._ask_question_handler is not None
+            and getattr(sdk, "HookMatcher", None) is not None
+        )
+
+    def _base_tools(self, sdk: _ClaudeSDK) -> list[str]:
         """Native Claude Code tools exposed to the model.
 
         ``Skill`` and ``ToolSearch`` are always present so MCP tool
         definitions can be discovered on demand. ``AskUserQuestion`` is added
-        only when an ``_ask_question_handler`` is wired — the tool would hang
+        only when :meth:`_ask_user_question_enabled` — the tool would hang
         headless without the PreToolUse intercept, so it's never exposed
         without the bridge that answers it. OS-environment operations route
         through Omnigent ``sys_os_*`` MCP tools, not the SDK's native
         Bash/Read/Edit/Write.
         """
         tools = ["Skill", "ToolSearch"]
-        if self._ask_question_handler is not None:
+        if self._ask_user_question_enabled(sdk):
             tools.append("AskUserQuestion")
         return tools
 
@@ -2276,9 +2291,21 @@ class ClaudeSDKExecutor(Executor):
         :param sdk: The ``claude_agent_sdk`` module (or a test double).
         :param options: ``ClaudeAgentOptions`` to mutate.
         """
-        hook_matcher_cls = getattr(sdk, "HookMatcher", None)
-        if hook_matcher_cls is None or self._ask_question_handler is None:
+        if not self._ask_user_question_enabled(sdk):
             return
+        hook_matcher_cls = sdk.HookMatcher
+
+        def _deny(reason: str) -> dict[str, Any]:  # type: ignore[explicit-any]  # HookJSONOutput
+            # Fail closed: every path that can't produce a form denies, so
+            # Claude never falls through to a headless native picker that
+            # hangs (all defensive paths behave identically).
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                }
+            }
 
         async def handle_ask_user_question(
             payload: Any,  # type: ignore[explicit-any]  # HookInput TypedDict
@@ -2287,19 +2314,14 @@ class ClaudeSDKExecutor(Executor):
         ) -> dict[str, Any]:  # type: ignore[explicit-any]  # HookJSONOutput
             handler = self._ask_question_handler
             if handler is None or not isinstance(payload, dict):
-                return {}
+                # Defensive / can't-happen (exposure is gated on the handler):
+                # deny deterministically rather than fall through to consent.
+                return _deny("AskUserQuestion unavailable via Omnigent")
             tool_input = payload.get("tool_input") or {}
             updated_input = await handler(tool_input)
             if updated_input is None:
-                # Declined / no active turn / unparseable — deny so Claude
-                # doesn't fall through to a headless native picker that hangs.
-                return {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "deny",
-                        "permissionDecisionReason": "Declined via Omnigent",
-                    }
-                }
+                # Declined / no active turn / unparseable.
+                return _deny("Declined via Omnigent")
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
@@ -2654,7 +2676,7 @@ class ClaudeSDKExecutor(Executor):
         # MCP tools (declared via ``os_env`` in the spec), not the
         # SDK's native Bash/Read/Edit/Write. Keep Skill and ToolSearch in
         # the base set so MCP definitions can be discovered on demand.
-        base_tools: list[str] = self._base_tools()
+        base_tools: list[str] = self._base_tools(sdk)
         # Translate the spec's host-skill filter into the SDK
         # options. Falls back to ``"all"`` semantics when the
         # field is malformed (the parser already validates, so
