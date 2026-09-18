@@ -32,7 +32,12 @@ from omnigent.entities import (
     ConversationItem,
     NewConversationItem,
 )
-from omnigent.errors import ErrorCode, OmnigentError
+from omnigent.errors import (
+    ErrorCode,
+    OmnigentError,
+    StaleCursorError,
+    restart_on_stale_cursor,
+)
 from omnigent.llms import Client as LLMClient
 from omnigent.models.model_catalog import resolve_catalog_model
 from omnigent.models.model_resolver import ModelResolutionError
@@ -1669,6 +1674,12 @@ def _build_acp_spawn_env(
 
     # Lazily import the config reader — the hot spawn-env path shouldn't pull in
     # the onboarding/config stack eagerly (mirrors the cursor builder).
+    # Also lazy: model_catalog pulls the onboarding provider config eagerly.
+    from omnigent.models.model_catalog import (
+        _acp_launch_model,
+        acp_curated_models,
+        validate_acp_model,
+    )
     from omnigent.onboarding.acp_auth import (
         AcpAgentEntry,
         acp_agents,
@@ -1736,13 +1747,27 @@ def _build_acp_spawn_env(
             # Names only; the harness reads each value from its own environment.
             env["HARNESS_ACP_ENV_PASSTHROUGH"] = ",".join(agent.env_passthrough)
 
-        model = _resolve_spec_model(spec)
-        if model is not None and not model.startswith(("databricks-", "databricks/")):
+        model = _acp_launch_model(spec)
+        validate_acp_model(spec, model)
+        if model is not None:
             env["HARNESS_ACP_MODEL"] = model
-        elif agent.model:
-            env["HARNESS_ACP_MODEL"] = agent.model
     # else: no agent configured — leave HARNESS_ACP_COMMAND unset so the wrap
     # raises a clear request-time error pointing the user at `omnigent setup`.
+
+    # The approved catalog is independent of the selected model.
+    curated = acp_curated_models(spec)
+    if curated:
+        env["HARNESS_ACP_MODEL_LIST"] = ",".join(curated)
+
+    # Credential vars the operator declared off-limits for generic ACP agents.
+    # The vendor CLI activates built-in providers on the mere presence of
+    # their credential (any value), flooding its own picker with entries that
+    # bypass the deployment's curated set. Names are forwarded (never values);
+    # the harness reads each from its own environment before spawning the CLI.
+    # Unset means no scrubbing, matching pi-native's OMNIGENT_PI_ENV_UNSET.
+    denylist = os.environ.get("OMNIGENT_ACP_ENV_UNSET", "").strip()
+    if denylist:
+        env["HARNESS_ACP_ENV_UNSET"] = denylist
 
     # Session workspace (selected working folder). ``None`` lets the acp
     # harness fall back to OMNIGENT_RUNNER_WORKSPACE — see HARNESS_ACP_CWD.
@@ -2488,7 +2513,7 @@ def _prepare_messages(
             content_cache,
             session_id=conversation_id,
         )
-    messages = history_to_input_items(resolved)
+    messages = history_to_input_items(resolved, preserve_framework_notices=True)
     sys_tokens = count_tokens(
         [{"role": "system", "content": sys_instructions}],
         compaction_state.model,
@@ -2502,6 +2527,7 @@ def _prepare_messages(
 # ── Pagination helper ─────────────────────────────────────
 
 
+@restart_on_stale_cursor
 def fetch_all_items(
     conv_store: ConversationStore,
     conversation_id: str,
@@ -2510,7 +2536,15 @@ def fetch_all_items(
     """
     Fetch all conversation items starting after the given
     cursor, paginating through every page until ``has_more``
-    is ``False``.
+    is ``False``. An item cursor invalidated mid-walk restarts
+    the walk (via :func:`restart_on_stale_cursor`) instead of
+    silently dropping the remaining items.
+
+    The restart only recovers a cursor this function derived
+    itself. A caller-supplied ``after`` that is already gone
+    would be re-issued unchanged by every attempt, so it
+    raises — the caller decides what a missing anchor means
+    for its own read.
 
     :param conv_store: The ConversationStore to query.
     :param conversation_id: The conversation to fetch items
@@ -2519,6 +2553,8 @@ def fetch_all_items(
         to fetch from the beginning.
     :returns: All items in chronological order after the
         cursor.
+    :raises StaleCursorError: If ``after`` names an item that
+        no longer exists.
     """
     all_items: list[ConversationItem] = []
     cursor = after
@@ -2738,11 +2774,28 @@ def _load_initial_history(
     # The compaction item may be appended after additional output
     # items that the summary does not cover — using last_item_id
     # ensures those post-summary items are included.
-    recent_items = fetch_all_items(
-        conv_store,
-        conversation_id,
-        after=compaction_item.data.last_item_id,
-    )
+    try:
+        recent_items = fetch_all_items(
+            conv_store,
+            conversation_id,
+            after=compaction_item.data.last_item_id,
+        )
+    except StaleCursorError:
+        # The anchor was deleted, so "everything after it" is unrecoverable.
+        # Reload the whole conversation, as a structurally broken compaction
+        # item does above: a superset beats a prompt starved of history.
+        _logger.warning(
+            "Compaction anchor %r for %s no longer exists; loading full history",
+            last_id,
+            conversation_id,
+        )
+        return _LoadedHistory(
+            items=[
+                item
+                for item in fetch_all_items(conv_store, conversation_id)
+                if item.type not in NON_CONTENT_ITEM_TYPES
+            ]
+        )
     # Filter metadata items — they are not conversation content the
     # LLM should receive verbatim.
     content_items = [i for i in recent_items if i.type not in NON_CONTENT_ITEM_TYPES]
