@@ -2344,7 +2344,10 @@ class ClaudeSDKExecutor(Executor):
         """
         if not self._ask_user_question_enabled(sdk):
             return
-        hook_matcher_cls = sdk.HookMatcher
+        # Presence is guaranteed by _ask_user_question_enabled; fetch via
+        # getattr (not ``sdk.HookMatcher``) because ``HookMatcher`` isn't
+        # declared on the _ClaudeSDK protocol.
+        hook_matcher_cls = getattr(sdk, "HookMatcher")  # noqa: B009
 
         def _deny(reason: str) -> dict[str, Any]:  # type: ignore[explicit-any]  # HookJSONOutput
             # Fail closed: every path that can't produce a form denies, so
