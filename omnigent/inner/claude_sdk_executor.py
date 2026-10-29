@@ -2509,9 +2509,8 @@ class ClaudeSDKExecutor(Executor):
         hook_matcher_cls = getattr(sdk, "HookMatcher")  # noqa: B009
 
         def _deny(reason: str) -> dict[str, Any]:  # type: ignore[explicit-any]  # HookJSONOutput
-            # Fail closed: every path that can't produce a form denies, so
-            # Claude never falls through to a headless native picker that
-            # hangs (all defensive paths behave identically).
+            # Fail closed: a path that can't produce answers denies, so Claude
+            # never falls through to a headless native picker that hangs.
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",

@@ -978,10 +978,8 @@ def _structured_ask_user_question(
         questions, malformed options, etc.) — caller falls back to
         the binary preview-only render.
     """
-    # Logic lives in the shared, dependency-free module so the claude-sdk
-    # elicitation bridge (omnigent.runtime.harnesses._executor_adapter) can
-    # reuse it without importing server-route code. Imported lazily to keep
-    # this module's import graph unchanged.
+    # Shared with the claude-sdk elicitation bridge, which can't import
+    # server-route code; imported lazily to keep this module's import graph.
     from omnigent.server.ask_user_question import structured_ask_user_question
 
     return structured_ask_user_question(tool_input)
