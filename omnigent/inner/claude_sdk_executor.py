@@ -196,11 +196,10 @@ ElicitationHandler: TypeAlias = Callable[
 # AskUserQuestion bridge wired in by ExecutorAdapter. Given the tool input,
 # it renders the questions as a clickable elicitation form and returns the
 # tool input with the user's selections merged under ``answers`` (Claude
-# then returns those as the tool result), or ``None`` to fall back to
-# Claude's native handling.
+# then returns those as the tool result), or the reason to deny the call.
 AskQuestionHandler: TypeAlias = Callable[
     [ToolArgs],
-    Awaitable[dict[str, Any] | None],
+    Awaitable[dict[str, Any] | str],
 ]
 
 # Opaque SDK artifacts whose concrete shape we don't touch directly:
@@ -2493,6 +2492,9 @@ class ClaudeSDKExecutor(Executor):
         clickable card the web UI renders), and returns the user's selections
         via ``updatedInput`` so Claude reports them as the tool result.
 
+        Allowing from PreToolUse skips ``can_use_tool``, so the hook runs the
+        TOOL_CALL policy check itself before showing the form.
+
         No-op unless the adapter has wired an ``_ask_question_handler``; the
         bridge is what reaches the active turn's elicitation round-trip.
 
@@ -2529,10 +2531,14 @@ class ClaudeSDKExecutor(Executor):
                 # deny deterministically rather than fall through to consent.
                 return _deny("AskUserQuestion unavailable via Omnigent")
             tool_input = payload.get("tool_input") or {}
+            policy_result = await self._evaluate_tool_call_policy("AskUserQuestion", tool_input)
+            if getattr(policy_result, "behavior", None) == "deny":
+                return _deny(
+                    getattr(policy_result, "message", "") or "Denied by Omnigent TOOL_CALL policy"
+                )
             updated_input = await handler(tool_input)
-            if updated_input is None:
-                # Declined / no active turn / unparseable.
-                return _deny("Declined via Omnigent")
+            if isinstance(updated_input, str):
+                return _deny(updated_input)
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",

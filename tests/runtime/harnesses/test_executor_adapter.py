@@ -3120,8 +3120,10 @@ async def test_ask_question_handler_returns_answers_on_accept() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ask_question_handler_returns_none_on_decline() -> None:
-    """A declined AskUserQuestion falls back to Claude's native handling."""
+async def test_ask_question_handler_reports_dismissal_on_decline() -> None:
+    """A declined question denies with a reason and leaves the turn running."""
+    import asyncio
+
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     class _Result:
@@ -3131,21 +3133,24 @@ async def test_ask_question_handler_returns_none_on_decline() -> None:
     class _CapturingCtx:
         def __init__(self) -> None:
             self.response_id = "resp_aq"
+            self.cancelled = asyncio.Event()
 
         async def elicit(self, elicitation_id: str, params: object) -> object:
             return _Result()
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    adapter._current_ctx = _CapturingCtx()  # type: ignore[assignment]
+    ctx = _CapturingCtx()
+    adapter._current_ctx = ctx  # type: ignore[assignment]
     out = await adapter._stable_ask_question_handler(
         {"questions": [{"question": "Q", "options": ["a", "b"]}]}
     )
-    assert out is None
+    assert out == "The user dismissed the question without answering."
+    assert not ctx.cancelled.is_set()
 
 
 @pytest.mark.asyncio
-async def test_ask_question_handler_none_and_no_elicit_when_no_questions() -> None:
-    """Input with no usable questions structure never elicits — falls back."""
+async def test_ask_question_handler_denies_without_elicit_when_no_questions() -> None:
+    """Input with no usable questions never elicits and tells the model why."""
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     class _NoElicitCtx:
@@ -3158,7 +3163,8 @@ async def test_ask_question_handler_none_and_no_elicit_when_no_questions() -> No
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
     adapter._current_ctx = _NoElicitCtx()  # type: ignore[assignment]
     out = await adapter._stable_ask_question_handler({"not": "questions"})
-    assert out is None
+    assert isinstance(out, str)
+    assert "nothing was shown to the user" in out
 
 
 @pytest.mark.asyncio

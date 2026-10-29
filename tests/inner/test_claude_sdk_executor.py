@@ -6273,14 +6273,39 @@ class TestAskUserQuestionHook(unittest.TestCase):
         self.assertEqual(hso["updatedInput"], {**tool_input, "answers": {"q1": "dev"}})
         ex._ask_question_handler.assert_awaited_once_with(tool_input)
 
-    def test_hook_denies_when_handler_returns_none(self):
+    def test_hook_denies_with_handler_reason(self):
         ex = self._make_executor()
-        ex._ask_question_handler = AsyncMock(return_value=None)
+        ex._ask_question_handler = AsyncMock(return_value="The user dismissed the question.")
         opts = SimpleNamespace(hooks=None)
         ex._install_ask_user_question_hook(self._fake_sdk(), opts)
         cb = self._aq_matcher(opts).hooks[0]
         out = _run(cb({"tool_input": {}}, None, {}))
-        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        hso = out["hookSpecificOutput"]
+        self.assertEqual(hso["permissionDecision"], "deny")
+        self.assertEqual(hso["permissionDecisionReason"], "The user dismissed the question.")
+
+    def test_hook_runs_tool_call_policy_before_asking(self):
+        # The PreToolUse allow skips can_use_tool, so a policy DENY must be
+        # enforced here and the question never shown.
+        from omnigent.runtime.harnesses._scaffold import PolicyVerdictPayload
+
+        ex = self._make_executor()
+        ex._ask_question_handler = AsyncMock(return_value={"answers": {"q1": "a"}})
+        ex._policy_evaluator = AsyncMock(
+            return_value=PolicyVerdictPayload(action="POLICY_ACTION_DENY", reason="no questions")
+        )
+        opts = SimpleNamespace(hooks=None)
+        ex._install_ask_user_question_hook(self._fake_sdk(), opts)
+        cb = self._aq_matcher(opts).hooks[0]
+        tool_input = {"questions": [{"question": "Q", "options": ["a"]}]}
+        out = _run(cb({"tool_input": tool_input}, None, {}))
+        hso = out["hookSpecificOutput"]
+        self.assertEqual(hso["permissionDecision"], "deny")
+        self.assertEqual(hso["permissionDecisionReason"], "no questions")
+        ex._policy_evaluator.assert_awaited_once_with(
+            "PHASE_TOOL_CALL", {"name": "AskUserQuestion", "arguments": tool_input}
+        )
+        ex._ask_question_handler.assert_not_awaited()
 
     def test_hook_denies_on_malformed_payload(self):
         # A non-dict PreToolUse payload can't yield a tool_input, so the hook
