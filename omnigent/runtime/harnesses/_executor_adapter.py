@@ -878,6 +878,7 @@ class ExecutorAdapter(HarnessApp):
         *,
         requested_schema: dict[str, Any] | None = None,
         ask_user_question: dict[str, Any] | None = None,
+        phase: str = "tool_call",
     ) -> ElicitationRequestParams:
         """Build the approval-card params for a tool-permission elicitation.
 
@@ -903,7 +904,7 @@ class ExecutorAdapter(HarnessApp):
             message=f"{label} wants to use **{tool_name}**",
             requestedSchema=requested_schema,
             url=None,
-            phase="tool_call",
+            phase=phase,
             policy_name=f"{label.lower()}_sdk_permission",
             content_preview=f"{tool_name}({preview})",
             **extras,
@@ -996,8 +997,10 @@ class ExecutorAdapter(HarnessApp):
                 "nothing was shown to the user. Fix the input or ask in plain text."
             )
         elicitation_id = f"elicit_{secrets.token_hex(16)}"
+        # Own phase so the REPL's "approve always" cache for tool calls never
+        # auto-accepts a question (an accept with no answers).
         params = self._permission_card(
-            "AskUserQuestion", tool_input, ask_user_question=ask_payload
+            "AskUserQuestion", tool_input, ask_user_question=ask_payload, phase="pre_tool_use"
         )
         result = await ctx.elicit(elicitation_id, params)
         # ``result.content`` is MCP-shaped (question -> selection), the same

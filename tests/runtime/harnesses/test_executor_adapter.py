@@ -3117,6 +3117,9 @@ async def test_ask_question_handler_returns_answers_on_accept() -> None:
         "extra so the UI renders clickable options."
     )
     assert payload["questions"][0]["question"] == "Which environment?"
+    # Distinct from the generic tool-call card so a REPL "approve always"
+    # on tool calls can't auto-accept a question.
+    assert getattr(captured["params"], "phase", None) == "pre_tool_use"
 
 
 @pytest.mark.asyncio
