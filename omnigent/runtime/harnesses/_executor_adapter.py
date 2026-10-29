@@ -1007,6 +1007,13 @@ class ExecutorAdapter(HarnessApp):
         # shape the claude-native permission hook feeds back as ``answers``.
         if result.action == "accept" and isinstance(result.content, dict) and result.content:
             return {**tool_input, "answers": result.content}
+        if result.action == "accept":
+            # A client without the question form (e.g. the terminal REPL) can
+            # only approve; the user agreed to answer but picked nothing.
+            return (
+                "The user's client could not show these options and no answer came "
+                "back. Ask the question again in plain text."
+            )
         # Dismissing a question is an answer, not a cancel: the turn continues.
         return "The user dismissed the question without answering."
 

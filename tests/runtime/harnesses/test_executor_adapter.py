@@ -2877,7 +2877,10 @@ async def test_elicitation_choice_handler_declines_without_a_turn() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("bridge", ["_elicitation_choice_handler", "_form_elicitation_handler"])
+@pytest.mark.parametrize(
+    "bridge",
+    ["_elicitation_choice_handler", "_form_elicitation_handler", "_ask_question_handler"],
+)
 @pytest.mark.parametrize("supported", [False, True])
 async def test_run_turn_installs_optional_bridges_only_where_supported(
     bridge: str,
@@ -3087,23 +3090,11 @@ async def test_ask_question_handler_returns_answers_on_accept() -> None:
     (the shape Claude Code expects so it returns them as the tool result).
     """
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-
-    captured: dict[str, object] = {}
-
-    class _Result:
-        action = "accept"
-        content = {"q1": "dev"}
-
-    class _CapturingCtx:
-        def __init__(self) -> None:
-            self.response_id = "resp_aq"
-
-        async def elicit(self, elicitation_id: str, params: object) -> object:
-            captured["params"] = params
-            return _Result()
+    from omnigent.server.schemas import ElicitationResult
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    adapter._current_ctx = _CapturingCtx()  # type: ignore[assignment]
+    ctx = _ElicitingTurnContext(ElicitationResult(action="accept", content={"q1": "dev"}))
+    adapter._current_ctx = ctx  # type: ignore[assignment]
     tool_input = {
         "questions": [
             {"question": "Which environment?", "options": [{"label": "dev"}, {"label": "prod"}]}
@@ -3111,7 +3102,8 @@ async def test_ask_question_handler_returns_answers_on_accept() -> None:
     }
     out = await adapter._stable_ask_question_handler(tool_input)
     assert out == {**tool_input, "answers": {"q1": "dev"}}
-    payload = getattr(captured["params"], "ask_user_question", None)
+    [(_, params)] = ctx.seen
+    payload = getattr(params, "ask_user_question", None)
     assert payload is not None, (
         "AskUserQuestion elicitation must carry the structured ask_user_question "
         "extra so the UI renders clickable options."
@@ -3119,36 +3111,40 @@ async def test_ask_question_handler_returns_answers_on_accept() -> None:
     assert payload["questions"][0]["question"] == "Which environment?"
     # Distinct from the generic tool-call card so a REPL "approve always"
     # on tool calls can't auto-accept a question.
-    assert getattr(captured["params"], "phase", None) == "pre_tool_use"
+    assert params.phase == "pre_tool_use"
 
 
 @pytest.mark.asyncio
-async def test_ask_question_handler_reports_dismissal_on_decline() -> None:
-    """A declined question denies with a reason and leaves the turn running."""
-    import asyncio
-
+@pytest.mark.parametrize(
+    ("action", "content", "expected"),
+    [
+        ("decline", None, "The user dismissed the question without answering."),
+        # A client without the question form (the terminal REPL) can only
+        # approve, so the model must re-ask instead of hearing "dismissed".
+        (
+            "accept",
+            None,
+            "The user's client could not show these options and no answer came "
+            "back. Ask the question again in plain text.",
+        ),
+    ],
+    ids=["dismissed", "accepted-without-answers"],
+)
+async def test_ask_question_handler_explains_unanswered_question(
+    action: str, content: dict[str, Any] | None, expected: str
+) -> None:
+    """An unanswered question denies with a reason and leaves the turn running."""
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-
-    class _Result:
-        action = "decline"
-        content = None
-
-    class _CapturingCtx:
-        def __init__(self) -> None:
-            self.response_id = "resp_aq"
-            self.cancelled = asyncio.Event()
-
-        async def elicit(self, elicitation_id: str, params: object) -> object:
-            return _Result()
+    from omnigent.server.schemas import ElicitationResult
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    ctx = _CapturingCtx()
+    ctx = _ElicitingTurnContext(ElicitationResult(action=action, content=content))
     adapter._current_ctx = ctx  # type: ignore[assignment]
     out = await adapter._stable_ask_question_handler(
         {"questions": [{"question": "Q", "options": ["a", "b"]}]}
     )
-    assert out == "The user dismissed the question without answering."
-    assert not ctx.cancelled.is_set()
+    assert out == expected
+    assert not ctx.cancelled.was_set
 
 
 @pytest.mark.asyncio
@@ -3183,6 +3179,7 @@ async def test_ask_user_question_roundtrip_real_executor_hook_through_adapter_br
     """
     from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.server.schemas import ElicitationResult
 
     executor = ClaudeSDKExecutor()
     adapter = ExecutorAdapter(executor_factory=lambda: executor)
@@ -3192,20 +3189,7 @@ async def test_ask_user_question_roundtrip_real_executor_hook_through_adapter_br
     assert hasattr(executor, "_ask_question_handler")
     executor._ask_question_handler = adapter._stable_ask_question_handler  # type: ignore[attr-defined]
 
-    class _Result:
-        action = "accept"
-        content = {"q1": "prod"}
-
-    class _Ctx:
-        def __init__(self) -> None:
-            self.response_id = "resp"
-            self.seen_params: object = None
-
-        async def elicit(self, elicitation_id: str, params: object) -> object:
-            self.seen_params = params
-            return _Result()
-
-    ctx = _Ctx()
+    ctx = _ElicitingTurnContext(ElicitationResult(action="accept", content={"q1": "prod"}))
     adapter._current_ctx = ctx  # type: ignore[assignment]
 
     # Register the real hook via a minimal fake SDK exposing HookMatcher.
@@ -3234,6 +3218,7 @@ async def test_ask_user_question_roundtrip_real_executor_hook_through_adapter_br
     assert hso["permissionDecision"] == "allow"
     assert hso["updatedInput"] == {**tool_input, "answers": {"q1": "prod"}}
     # The elicited params carried the clickable form spec the UI renders.
-    payload = getattr(ctx.seen_params, "ask_user_question", None)
+    [(_, params)] = ctx.seen
+    payload = getattr(params, "ask_user_question", None)
     assert payload is not None
     assert payload["questions"][0]["question"] == "Env?"

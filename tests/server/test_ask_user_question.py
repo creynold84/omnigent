@@ -69,3 +69,25 @@ def test_skips_question_with_no_valid_options() -> None:
         )
         is None
     )
+
+
+def test_keeps_valid_questions_alongside_invalid_ones() -> None:
+    # One malformed question must not discard the usable ones next to it.
+    out = structured_ask_user_question(
+        {
+            "questions": [
+                {"question": "Broken", "options": [{"no_label": 1}]},
+                {"question": "", "options": ["x"]},
+                {"question": "Env?", "options": ["dev", "prod"]},
+            ]
+        }
+    )
+    assert out == {
+        "questions": [
+            {
+                "question": "Env?",
+                "options": [{"label": "dev"}, {"label": "prod"}],
+                "multiSelect": False,
+            }
+        ]
+    }
